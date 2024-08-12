@@ -1,6 +1,7 @@
 package idgen
 
 import (
+	"context"
 	"encoding/binary"
 
 	"github.com/btcsuite/btcutil/base58"
@@ -45,4 +46,8 @@ func NewSnowflakeId() uint64 {
 func NewSnowflakeIdEnc() string {
 	id := NewSnowflakeId()
 	return EncodeUint64(id)
+}
+
+func GenerateId(ctx context.Context) uint64 {
+	return NewSnowflakeId()
 }
