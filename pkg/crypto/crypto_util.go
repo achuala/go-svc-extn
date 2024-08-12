@@ -7,10 +7,11 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"go-svc-extn/pkg/crypto/encdec"
-	"go-svc-extn/pkg/crypto/hash"
 	"io"
 	"strings"
+
+	"github.com/achuala/go-svc-extn/pkg/crypto/encdec"
+	"github.com/achuala/go-svc-extn/pkg/crypto/hash"
 
 	"github.com/pkg/errors"
 )
@@ -22,17 +23,17 @@ type CryptoUtil struct {
 
 type CryptoConfig struct {
 	KmsUri     string
-	KeySetData string
+	KeysetData string
 	HmacKey    string
 }
 
 func NewCryptoUtil(cfg *CryptoConfig) *CryptoUtil {
 	conf := hash.SipHashConfiguration{Key: cfg.HmacKey}
 	hasher := hash.NewHasherSipHash24(&conf)
-	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KeySetData: cfg.KeySetData}
+	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KeySetData: cfg.KeysetData}
 	cryptoProvider := encdec.NewTinkCryptoHandler(tinkCfg)
 	return &CryptoUtil{
-		hashProvider: hasher, cryptoProvider: cryptoProvider, temp_cache: make(map[string]string)}
+		hashProvider: hasher, cryptoProvider: cryptoProvider}
 
 }
 
@@ -77,14 +78,7 @@ func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, e
 
 func (u *CryptoUtil) GenerateAesKey(ctx context.Context, key string) (string, error) {
 	sessionKey, err := u.generateKey()
-	if err == nil {
-		u.temp_cache[key] = sessionKey
-	}
 	return sessionKey, err
-}
-
-func (u *CryptoUtil) GetAesKeyFromCache(ctx context.Context, key string) (string, error) {
-	return u.temp_cache[key], nil
 }
 
 func (h *CryptoUtil) generateKey() (string, error) {

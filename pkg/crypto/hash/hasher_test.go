@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"cas-ums/internal/util/hash"
+	"github.com/achuala/go-svc-extn/pkg/crypto/hash"
 )
 
 func mkpw(t *testing.T, length int) []byte {
