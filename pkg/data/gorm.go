@@ -10,8 +10,7 @@ import (
 
 // Data .
 type Data struct {
-	db  *gorm.DB
-	log *log.Helper
+	db *gorm.DB
 }
 
 type Transaction interface {
@@ -41,26 +40,17 @@ func NewTransaction(d *Data) Transaction {
 }
 
 // NewData .
-func NewData(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
-	l := log.NewHelper(log.With(logger, "module", "gorm"))
+func NewGorm(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
 	d := &Data{
-		db:  db,
-		log: l,
+		db: db,
 	}
 	return d, func() {
 	}, nil
 }
 
 // NewDB gorm Connecting to a Database
-func NewDB(dsn string, logger log.Logger) *gorm.DB {
-	log := log.NewHelper(log.With(logger, "module", "gorm"))
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true, PrepareStmt: true})
-	if err != nil {
-		log.Fatalf("failed opening connection to database: %v", err)
-	}
-
-	return db
+func NewDB(dsn string) (*gorm.DB, error) {
+	return gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true, PrepareStmt: true})
 }
 
 func Paginate(page, pageSize int) func(db *gorm.DB) *gorm.DB {
