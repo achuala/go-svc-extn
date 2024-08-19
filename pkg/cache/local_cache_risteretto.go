@@ -25,16 +25,26 @@ func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
 	return &LocalCacheRistretto{cache: cache}
 }
 
-func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (interface{}, bool) {
+func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (any, bool) {
 	return c.cache.Get(key)
 }
 
-func (c *LocalCacheRistretto) Set(ctx context.Context, key string, value interface{}) error {
+func (c *LocalCacheRistretto) Set(ctx context.Context, key string, value any) error {
 	c.cache.Set(key, value, 1) // Assuming the cost is 1 for simplicity.
 	return nil
 }
 
-func (c *LocalCacheRistretto) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+func (c *LocalCacheRistretto) SetWithTTL(ctx context.Context, key string, value any, ttl time.Duration) error {
 	c.cache.SetWithTTL(key, value, 1, ttl) // Assuming the cost is 1 for simplicity.
+	return nil
+}
+
+func (c *LocalCacheRistretto) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	c.cache.Del(key)
+	return nil
+}
+
+func (c *LocalCacheRistretto) Delete(ctx context.Context, key string) error {
+	c.cache.Del(key)
 	return nil
 }

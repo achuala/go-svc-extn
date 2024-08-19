@@ -13,6 +13,7 @@ type RemoteCacheValkey struct {
 	name        string
 	ttl         time.Duration
 	maxElements uint64
+	applyTouch  bool
 }
 
 func NewRemoteCacheValkey(cacheCfg *CacheConfig) *RemoteCacheValkey {
@@ -22,7 +23,7 @@ func NewRemoteCacheValkey(cacheCfg *CacheConfig) *RemoteCacheValkey {
 		DB:       0,  // Use default DB
 	})
 	return &RemoteCacheValkey{client: client, name: cacheCfg.CacheName,
-		ttl: cacheCfg.DefaultTTL, maxElements: cacheCfg.MaxElements}
+		ttl: cacheCfg.DefaultTTL, maxElements: cacheCfg.MaxElements, applyTouch: cacheCfg.ApplyTouch}
 }
 
 func (c *RemoteCacheValkey) makeKey(key string) string {
@@ -34,6 +35,9 @@ func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (interface{}, b
 		return nil, false
 	} else if err != nil {
 		return nil, false
+	}
+	if c.applyTouch {
+		c.Expire(ctx, key, c.ttl)
 	}
 	return val, true
 }
@@ -47,4 +51,12 @@ func (c *RemoteCacheValkey) Set(ctx context.Context, key string, value interface
 
 func (c *RemoteCacheValkey) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	return c.client.Set(ctx, c.makeKey(key), value, ttl).Err()
+}
+
+func (c *RemoteCacheValkey) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return c.client.Expire(ctx, key, ttl).Err()
+}
+
+func (c *RemoteCacheValkey) Delete(ctx context.Context, key string) error {
+	return c.client.Del(ctx, key).Err()
 }
