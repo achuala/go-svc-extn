@@ -13,7 +13,7 @@ type LocalCacheRistretto struct {
 	cache *ristretto.Cache
 }
 
-func NewLocalCacheRistretto() *LocalCacheRistretto {
+func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).

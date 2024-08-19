@@ -15,14 +15,15 @@ type Cache interface {
 type CacheConfig struct {
 	// local/remote, default is local
 	Mode            string
+	CacheName       string
 	RemoteCacheAddr string
 	DefaultTTL      time.Duration
-	MaxElements     uint32
+	MaxElements     uint64
 }
 
 func NewCache(cacheCfg *CacheConfig) Cache {
 	if cacheCfg.Mode == "remote" {
-		return NewRemoteCacheValkey(cacheCfg.RemoteCacheAddr)
+		return NewRemoteCacheValkey(cacheCfg)
 	}
-	return NewLocalCacheRistretto()
+	return NewLocalCacheRistretto(cacheCfg)
 }
