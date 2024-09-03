@@ -11,6 +11,7 @@ import (
 // LocalCache is an implementation of Cache that uses Ristretto.
 type LocalCacheRistretto struct {
 	cache *ristretto.Cache
+	ttl   time.Duration
 }
 
 func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
@@ -22,7 +23,7 @@ func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
 	if err != nil {
 		log.Fatalf("failed to create local cache: %v", err)
 	}
-	return &LocalCacheRistretto{cache: cache}
+	return &LocalCacheRistretto{cache: cache, ttl: cacheCfg.DefaultTTL}
 }
 
 func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (any, bool) {
@@ -30,6 +31,9 @@ func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (any, bool) {
 }
 
 func (c *LocalCacheRistretto) Set(ctx context.Context, key string, value any) error {
+	if c.ttl.Seconds() > 0 {
+		return c.SetWithTTL(ctx, key, value, c.ttl)
+	}
 	c.cache.Set(key, value, 1) // Assuming the cost is 1 for simplicity.
 	return nil
 }
