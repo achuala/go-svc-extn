@@ -14,7 +14,7 @@ type LocalCacheRistretto struct {
 	ttl   time.Duration
 }
 
-func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
+func NewLocalCacheRistretto(cacheCfg *CacheConfig) (*LocalCacheRistretto, func()) {
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).
@@ -23,7 +23,10 @@ func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
 	if err != nil {
 		log.Fatalf("failed to create local cache: %v", err)
 	}
-	return &LocalCacheRistretto{cache: cache, ttl: cacheCfg.DefaultTTL}
+	cleanup := func() {
+		cache.Close()
+	}
+	return &LocalCacheRistretto{cache: cache, ttl: cacheCfg.DefaultTTL}, cleanup
 }
 
 func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (any, bool) {

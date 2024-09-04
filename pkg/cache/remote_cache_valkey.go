@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -16,29 +17,35 @@ type RemoteCacheValkey struct {
 	applyTouch  bool
 }
 
-func NewRemoteCacheValkey(cacheCfg *CacheConfig) *RemoteCacheValkey {
+func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, func()) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     cacheCfg.RemoteCacheAddr,
 		Password: "", // No password set
 		DB:       0,  // Use default DB
 	})
+	cleanup := func() {
+		if err := client.Close(); err != nil {
+			// Consider logging this error
+			fmt.Printf("Error closing Redis client: %v\n", err)
+		}
+	}
+
 	return &RemoteCacheValkey{client: client, name: cacheCfg.CacheName,
-		ttl: cacheCfg.DefaultTTL, maxElements: cacheCfg.MaxElements, applyTouch: cacheCfg.ApplyTouch}
+		ttl: cacheCfg.DefaultTTL, maxElements: cacheCfg.MaxElements, applyTouch: cacheCfg.ApplyTouch}, cleanup
 }
 
 func (c *RemoteCacheValkey) makeKey(key string) string {
 	return c.name + ":" + key
 }
 func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (interface{}, bool) {
-	prefixedKey := c.makeKey(key)
-	val, err := c.client.Get(ctx, prefixedKey).Result()
+	val, err := c.client.Get(ctx, c.makeKey(key)).Result()
 	if err == redis.Nil {
 		return nil, false
 	} else if err != nil {
 		return nil, false
 	}
 	if c.applyTouch {
-		c.Expire(ctx, prefixedKey, c.ttl)
+		c.Expire(ctx, key, c.ttl)
 	}
 	return val, true
 }

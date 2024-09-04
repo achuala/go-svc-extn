@@ -37,6 +37,8 @@ func NewCryptoUtil(cfg *CryptoConfig) *CryptoUtil {
 
 }
 
+// CreateAlias creates an alias for the given plain text.
+// It returns the hashed value of the plain text.
 func (u *CryptoUtil) CreateAlias(ctx context.Context, plain []byte) ([]byte, error) {
 	if len(plain) == 0 {
 		return make([]byte, 0), nil
@@ -44,6 +46,8 @@ func (u *CryptoUtil) CreateAlias(ctx context.Context, plain []byte) ([]byte, err
 	return u.hashProvider.Generate(ctx, plain)
 }
 
+// CompareHash compares the plain text with the stored hash.
+// It returns true if the plain text is the same as the stored hash.
 func (h *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []byte) (bool, error) {
 	newHash, err := h.CreateAlias(ctx, plainName)
 	if err != nil {
@@ -56,6 +60,8 @@ func (h *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []by
 	return isEqual, nil
 }
 
+// Encrypt encrypts the given plain text.
+// It returns the encrypted value of the plain text.
 func (u *CryptoUtil) Encrypt(ctx context.Context, plainText []byte) (string, error) {
 	if cipherText, err := u.cryptoProvider.Encrypt(ctx, []byte(plainText)); err != nil {
 		return "", err
@@ -64,6 +70,8 @@ func (u *CryptoUtil) Encrypt(ctx context.Context, plainText []byte) (string, err
 	}
 }
 
+// Decrypt decrypts the given cipher text.
+// It returns the decrypted value of the cipher text.
 func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, error) {
 	if cipher, err := base64.RawStdEncoding.DecodeString(cipeherText); err != nil {
 		return nil, errors.Wrap(err, "unable to decode")
@@ -76,6 +84,8 @@ func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, e
 	}
 }
 
+// GenerateAesKey generates an AES key.
+// It returns the AES key.
 func (u *CryptoUtil) GenerateAesKey(ctx context.Context, key string) (string, error) {
 	sessionKey, err := u.generateKey()
 	return sessionKey, err
@@ -90,6 +100,8 @@ func (h *CryptoUtil) generateKey() (string, error) {
 	return base64.RawStdEncoding.EncodeToString(key), nil
 }
 
+// EncryptWithKey encrypts the given plain text with the given key.
+// It returns the encrypted value of the plain text.
 func (u *CryptoUtil) EncryptWithKey(ctx context.Context, key, plainText string) (string, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {
@@ -118,6 +130,8 @@ func (u *CryptoUtil) EncryptWithKey(ctx context.Context, key, plainText string) 
 	return ciperText, nil
 }
 
+// DecryptWithKey decrypts the given cipher text with the given key.
+// It returns the decrypted value of the cipher text.
 func (u *CryptoUtil) DecryptWithKey(ctx context.Context, key, cipeherText string) ([]byte, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {

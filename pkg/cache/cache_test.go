@@ -10,7 +10,8 @@ import (
 )
 
 func TestLocalCache(t *testing.T) {
-	cache := cache.NewCache(&cache.CacheConfig{Mode: "local"})
+	cache, cleanup := cache.NewCache(&cache.CacheConfig{Mode: "local"})
+	defer cleanup()
 	value := "val1"
 	cache.Set(context.Background(), "key1", value)
 	time.Sleep(time.Second * 1)
