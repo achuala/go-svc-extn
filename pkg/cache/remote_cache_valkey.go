@@ -30,14 +30,15 @@ func (c *RemoteCacheValkey) makeKey(key string) string {
 	return c.name + ":" + key
 }
 func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (interface{}, bool) {
-	val, err := c.client.Get(ctx, c.makeKey(key)).Result()
+	prefixedKey := c.makeKey(key)
+	val, err := c.client.Get(ctx, prefixedKey).Result()
 	if err == redis.Nil {
 		return nil, false
 	} else if err != nil {
 		return nil, false
 	}
 	if c.applyTouch {
-		c.Expire(ctx, key, c.ttl)
+		c.Expire(ctx, prefixedKey, c.ttl)
 	}
 	return val, true
 }
@@ -54,9 +55,9 @@ func (c *RemoteCacheValkey) SetWithTTL(ctx context.Context, key string, value in
 }
 
 func (c *RemoteCacheValkey) Expire(ctx context.Context, key string, ttl time.Duration) error {
-	return c.client.Expire(ctx, key, ttl).Err()
+	return c.client.Expire(ctx, c.makeKey(key), ttl).Err()
 }
 
 func (c *RemoteCacheValkey) Delete(ctx context.Context, key string) error {
-	return c.client.Del(ctx, key).Err()
+	return c.client.Del(ctx, c.makeKey(key)).Err()
 }

@@ -47,10 +47,10 @@ func NewGrpcService(port int, logger log.Logger, mw []middleware.Middleware) (*g
 	srv := grpc.NewServer(opts...)
 
 	// Register all provided services
-	for _, registerService := range cfg.Services {
-		registerService(srv)
-	}
-
+	/*	for _, registerService := range cfg.Services {
+			registerService(srv)
+		}
+	*/
 	// Return server and shutdown function
 	return srv, func() {
 		srv.GracefulStop()
