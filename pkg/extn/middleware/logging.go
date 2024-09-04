@@ -20,39 +20,11 @@ type Redacter interface {
 	Redact() string
 }
 
-// Server is an server logging middleware.
+// Server is a server logging middleware.
 func Server(logger log.Logger) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			var (
-				code      int32
-				reason    string
-				kind      string
-				operation string
-			)
-			startTime := time.Now()
-			if info, ok := transport.FromServerContext(ctx); ok {
-				kind = info.Kind().String()
-				operation = info.Operation()
-			}
-			reply, err = handler(ctx, req)
-			if se := errors.FromError(err); se != nil {
-				code = se.Code
-				reason = se.Reason
-			}
-			level, stack := extractError(err)
-			_ = log.WithContext(ctx, logger).Log(level,
-				"kind", "server",
-				"component", kind,
-				"op", operation,
-				"req", extractArgs(req),
-				"resp", extractArgs(reply),
-				"code", code,
-				"reason", reason,
-				"stack", stack,
-				"latency", time.Since(startTime).Seconds(),
-			)
-			return
+			return logMiddleware(ctx, req, handler, logger, "server")
 		}
 	}
 }
@@ -61,54 +33,63 @@ func Server(logger log.Logger) middleware.Middleware {
 func Client(logger log.Logger) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
-			var (
-				code      int32
-				reason    string
-				kind      string
-				operation string
-			)
-			startTime := time.Now()
-			if info, ok := transport.FromClientContext(ctx); ok {
-				kind = info.Kind().String()
-				operation = info.Operation()
-			}
-			reply, err = handler(ctx, req)
-			if se := errors.FromError(err); se != nil {
-				code = se.Code
-				reason = se.Reason
-			}
-			level, stack := extractError(err)
-			_ = log.WithContext(ctx, logger).Log(level,
-				"kind", "client",
-				"component", kind,
-				"op", operation,
-				"req", extractArgs(req),
-				"resp", extractArgs(reply),
-				"code", code,
-				"reason", reason,
-				"stack", stack,
-				"latency", time.Since(startTime).Seconds(),
-			)
-			return
+			return logMiddleware(ctx, req, handler, logger, "client")
 		}
 	}
 }
 
-// extractArgs returns the string of the req
-func extractArgs(req interface{}) string {
-	if protoMsg, ok := req.(proto.Message); ok {
-		clone := proto.Clone(protoMsg)
-		handleSenstiveData(clone.ProtoReflect())
-		return fmt.Sprintf("%+v", clone)
-	} else if redacter, ok := req.(Redacter); ok {
-		return redacter.Redact()
-	} else if stringer, ok := req.(fmt.Stringer); ok {
-		return stringer.String()
+func logMiddleware(ctx context.Context, req interface{}, handler middleware.Handler, logger log.Logger, kind string) (reply interface{}, err error) {
+	var (
+		code      int32
+		reason    string
+		operation string
+		component string
+	)
+	startTime := time.Now()
+	if info, ok := transport.FromServerContext(ctx); ok {
+		component = info.Kind().String()
+		operation = info.Operation()
+	} else if info, ok := transport.FromClientContext(ctx); ok {
+		component = info.Kind().String()
+		operation = info.Operation()
 	}
-	return fmt.Sprintf("%+v", req)
+	reply, err = handler(ctx, req)
+	if se := errors.FromError(err); se != nil {
+		code = se.Code
+		reason = se.Reason
+	}
+	level, stack := extractError(err)
+	_ = log.WithContext(ctx, logger).Log(level,
+		"kind", kind,
+		"component", component,
+		"op", operation,
+		"req", extractArgs(req),
+		"resp", extractArgs(reply),
+		"code", code,
+		"reason", reason,
+		"stack", stack,
+		"latency", time.Since(startTime).Seconds(),
+	)
+	return
 }
 
-// extractError returns the string of the error
+// extractArgs returns the string representation of the req
+func extractArgs(req interface{}) string {
+	switch v := req.(type) {
+	case proto.Message:
+		clone := proto.Clone(v)
+		handleSensitiveData(clone.ProtoReflect())
+		return fmt.Sprintf("%+v", clone)
+	case Redacter:
+		return v.Redact()
+	case fmt.Stringer:
+		return v.String()
+	default:
+		return fmt.Sprintf("%+v", req)
+	}
+}
+
+// extractError returns the log level and string representation of the error
 func extractError(err error) (log.Level, string) {
 	if err != nil {
 		return log.LevelError, fmt.Sprintf("%+v", err)
@@ -116,61 +97,50 @@ func extractError(err error) (log.Level, string) {
 	return log.LevelInfo, ""
 }
 
-func handleSenstiveData(m protoreflect.Message) {
+func handleSensitiveData(m protoreflect.Message) {
 	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
 		opts := fd.Options().(*descriptorpb.FieldOptions)
 
 		switch typed := v.Interface().(type) {
 		case protoreflect.Message:
-			handleSenstiveData(typed)
+			handleSensitiveData(typed)
 		case protoreflect.Map:
 			typed.Range(func(key protoreflect.MapKey, value protoreflect.Value) bool {
-				if _, ok := value.Interface().(protoreflect.Message); ok {
-					handleSenstiveData(value.Message())
+				if msg, ok := value.Interface().(protoreflect.Message); ok {
+					handleSensitiveData(msg)
 				}
-				if _, ok := key.Interface().(protoreflect.Message); ok {
-					handleSenstiveData(key.Value().Message())
+				if msg, ok := key.Interface().(protoreflect.Message); ok {
+					handleSensitiveData(msg)
 				}
 				return true
 			})
 		case protoreflect.List:
 			for i := 0; i < typed.Len(); i++ {
-				if _, ok := typed.Get(i).Interface().(protoreflect.Message); ok {
-					handleSenstiveData(typed.Get(i).Message())
+				if msg, ok := typed.Get(i).Interface().(protoreflect.Message); ok {
+					handleSensitiveData(msg)
 				}
 			}
 		}
 
-		// Get extension from field
 		ext := proto.GetExtension(opts, options.E_Sensitive)
-		// Check if equal to bool as expected
 		extVal, ok := ext.(*options.Sensitive)
-		if !ok {
+		if !ok || extVal == nil {
 			return true
 		}
 
-		// If true clear field and move on
-		if extVal != nil {
-			if extVal.GetRedact() || extVal.Pii {
-				m.Clear(fd)
-			} else if extVal.GetMask() {
-				maskedValue := maskString(v.String())
-				m.Set(fd, protoreflect.ValueOfString(maskedValue))
-			}
+		if extVal.GetRedact() || extVal.Pii {
+			m.Clear(fd)
+		} else if extVal.GetMask() {
+			m.Set(fd, protoreflect.ValueOfString(maskString(v.String())))
 		}
 
 		return true
 	})
-
 }
 
 func maskString(value string) string {
 	if len(value) <= 4 {
-		// If the string length is less than or equal to 4, just return "****" for masking.
 		return "****"
 	}
-
-	// Mask all characters except the last 4 with "*".
-	maskedValue := strings.Repeat("*", len(value)-4) + value[len(value)-4:]
-	return maskedValue
+	return strings.Repeat("*", len(value)-4) + value[len(value)-4:]
 }
