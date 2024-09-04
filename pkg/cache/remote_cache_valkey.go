@@ -9,32 +9,54 @@ import (
 
 // RemoteCache is an implementation of Cache that uses Redis.
 type RemoteCacheValkey struct {
-	client *redis.Client
+	client      *redis.Client
+	name        string
+	ttl         time.Duration
+	maxElements uint64
+	applyTouch  bool
 }
 
-func NewRemoteCacheValkey(addr string) *RemoteCacheValkey {
+func NewRemoteCacheValkey(cacheCfg *CacheConfig) *RemoteCacheValkey {
 	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
+		Addr:     cacheCfg.RemoteCacheAddr,
 		Password: "", // No password set
 		DB:       0,  // Use default DB
 	})
-	return &RemoteCacheValkey{client: client}
+	return &RemoteCacheValkey{client: client, name: cacheCfg.CacheName,
+		ttl: cacheCfg.DefaultTTL, maxElements: cacheCfg.MaxElements, applyTouch: cacheCfg.ApplyTouch}
 }
 
+func (c *RemoteCacheValkey) makeKey(key string) string {
+	return c.name + ":" + key
+}
 func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (interface{}, bool) {
-	val, err := c.client.Get(ctx, key).Result()
+	val, err := c.client.Get(ctx, c.makeKey(key)).Result()
 	if err == redis.Nil {
 		return nil, false
 	} else if err != nil {
 		return nil, false
 	}
+	if c.applyTouch {
+		c.Expire(ctx, key, c.ttl)
+	}
 	return val, true
 }
 
 func (c *RemoteCacheValkey) Set(ctx context.Context, key string, value interface{}) error {
-	return c.client.Set(ctx, key, value, 0).Err()
+	if c.ttl.Seconds() > 0 {
+		return c.SetWithTTL(ctx, key, value, c.ttl)
+	}
+	return c.client.Set(ctx, c.makeKey(key), value, 0).Err()
 }
 
 func (c *RemoteCacheValkey) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
-	return c.client.Set(ctx, key, value, ttl).Err()
+	return c.client.Set(ctx, c.makeKey(key), value, ttl).Err()
+}
+
+func (c *RemoteCacheValkey) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return c.client.Expire(ctx, key, ttl).Err()
+}
+
+func (c *RemoteCacheValkey) Delete(ctx context.Context, key string) error {
+	return c.client.Del(ctx, key).Err()
 }

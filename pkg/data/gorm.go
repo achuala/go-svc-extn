@@ -40,7 +40,7 @@ func NewTransaction(d *Data) Transaction {
 }
 
 // NewData .
-func NewGorm(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
+func NewData(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
 	d := &Data{
 		db: db,
 	}
@@ -49,7 +49,7 @@ func NewGorm(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
 }
 
 // NewDB gorm Connecting to a Database
-func NewDB(dsn string) (*gorm.DB, error) {
+func NewGorm(dsn string) (*gorm.DB, error) {
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true, PrepareStmt: true})
 }
 

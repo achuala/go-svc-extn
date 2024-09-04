@@ -11,9 +11,10 @@ import (
 // LocalCache is an implementation of Cache that uses Ristretto.
 type LocalCacheRistretto struct {
 	cache *ristretto.Cache
+	ttl   time.Duration
 }
 
-func NewLocalCacheRistretto() *LocalCacheRistretto {
+func NewLocalCacheRistretto(cacheCfg *CacheConfig) *LocalCacheRistretto {
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).
@@ -22,19 +23,32 @@ func NewLocalCacheRistretto() *LocalCacheRistretto {
 	if err != nil {
 		log.Fatalf("failed to create local cache: %v", err)
 	}
-	return &LocalCacheRistretto{cache: cache}
+	return &LocalCacheRistretto{cache: cache, ttl: cacheCfg.DefaultTTL}
 }
 
-func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (interface{}, bool) {
+func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (any, bool) {
 	return c.cache.Get(key)
 }
 
-func (c *LocalCacheRistretto) Set(ctx context.Context, key string, value interface{}) error {
+func (c *LocalCacheRistretto) Set(ctx context.Context, key string, value any) error {
+	if c.ttl.Seconds() > 0 {
+		return c.SetWithTTL(ctx, key, value, c.ttl)
+	}
 	c.cache.Set(key, value, 1) // Assuming the cost is 1 for simplicity.
 	return nil
 }
 
-func (c *LocalCacheRistretto) SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+func (c *LocalCacheRistretto) SetWithTTL(ctx context.Context, key string, value any, ttl time.Duration) error {
 	c.cache.SetWithTTL(key, value, 1, ttl) // Assuming the cost is 1 for simplicity.
+	return nil
+}
+
+func (c *LocalCacheRistretto) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	c.cache.Del(key)
+	return nil
+}
+
+func (c *LocalCacheRistretto) Delete(ctx context.Context, key string) error {
+	c.cache.Del(key)
 	return nil
 }
