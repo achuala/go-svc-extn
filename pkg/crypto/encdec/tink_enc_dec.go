@@ -23,7 +23,7 @@ type TinkCryptoHandler struct {
 }
 
 func NewTinkCryptoHandler(c *TinkConfiguration) *TinkCryptoHandler {
-	client, err := newCaasKmsClient(c.KekUri)
+	client, err := NewCaasKmsClient(c.KekUri)
 	if err != nil {
 		log.Fatal(err)
 	}
