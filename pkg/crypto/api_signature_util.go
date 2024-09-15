@@ -23,23 +23,28 @@ type DbAccessSecretProvider struct {
 }
 
 func NewDbAccessSecretProvider(db *gorm.DB) *DbAccessSecretProvider {
-	return &DbAccessSecretProvider{db, make(map[string]string)}
+	return &DbAccessSecretProvider{db: db, accessKeys: make(map[string]string)}
 }
 
 // GetAccessSecret retrieves the access secret for a given access key ID.
 // It first checks the in-memory cache, and if not found, queries the database.
 // The retrieved secret is then cached for future use.
 func (p *DbAccessSecretProvider) GetAccessSecret(accessKeyId string) (string, error) {
-	if found, ok := p.accessKeys[accessKeyId]; !ok {
-		var accessSecret string
-		tx := p.db.Table("api_access_keys").Where("key_id = ?", accessKeyId).Scan(&accessSecret)
-		if accessSecret != "" {
-			p.accessKeys[accessKeyId] = accessSecret
-		}
-		return accessSecret, tx.Error
-	} else {
-		return found, nil
+	if secret, ok := p.accessKeys[accessKeyId]; ok {
+		return secret, nil
 	}
+
+	var accessSecret string
+	err := p.db.Table("api_access_keys").Where("key_id = ?", accessKeyId).Pluck("secret", &accessSecret).Error
+	if err != nil {
+		return "", err
+	}
+
+	if accessSecret != "" {
+		p.accessKeys[accessKeyId] = accessSecret
+	}
+
+	return accessSecret, nil
 }
 
 // HmacSha256 computes the HMAC-SHA256 of the given data using the provided key.
@@ -62,7 +67,7 @@ func Sha256(input string) []byte {
 // It combines the access secret key, timestamp, API name, and API version
 // to create a unique signature key.
 func GetSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []byte {
-	TERMINATOR := "@@"
+	const TERMINATOR = "@@"
 
 	kSecret := []byte(accessSecretKey)
 	kDate := HmacSha256(timeStamp, kSecret)
@@ -75,9 +80,8 @@ func GetSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 // It uses the access secret key, timestamp, API name, and API version
 // to compute a unique signature.
 // The computed signature is then returned as a string.
-
 func ComputeSignature(accessSecretKey, payload string, headers map[string]string) string {
-	ALGORITHM_KEY := "HMAC-SHA256"
+	const ALGORITHM_KEY = "HMAC-SHA256"
 
 	timestamp := headers["ts"]
 	apiName := headers["api"]
@@ -98,21 +102,17 @@ func ComputeSignature(accessSecretKey, payload string, headers map[string]string
 
 // VerifySignature verifies the signature of the given payload and headers.
 // It uses the access secret key, timestamp, API name, and API version
-// to compute a unique signature.
-// The computed signature is then returned as a string.
-func VerifySignature(tokenHeader, securityHeader, payload string, accesSecretProvider AccessSecretProvider) error {
-	// Split the token by "/"
+// to compute a unique signature and compare it with the provided signature.
+func VerifySignature(tokenHeader, securityHeader, payload string, accessSecretProvider AccessSecretProvider) error {
 	tokens := splitKeyValue(tokenHeader, "/", "=")
 
-	// Split the credentials (assuming tokens["key1"] == "value1:value2")
 	credentials := splitKeyValue(tokens["creds"], "\n", ":")
 	accessKeyId := credentials["access-key"]
-	accessSecret, err := accesSecretProvider.GetAccessSecret(accessKeyId)
+	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
 	if err != nil {
 		return err
 	}
-	// TODO: Use the access key id to get the access secret
-	// Split the security header by "/"
+
 	headers := splitKeyValue(securityHeader, "/", "=")
 	providedSignature := tokens["signature"]
 	computedSignature := ComputeSignature(accessSecret, payload, headers)
@@ -122,7 +122,7 @@ func VerifySignature(tokenHeader, securityHeader, payload string, accesSecretPro
 	return nil
 }
 
-// splitKeyValue using built-in strings.Split and strings.SplitN
+// splitKeyValue splits a string into key-value pairs using the provided separators.
 func splitKeyValue(s, pairSep, kvSep string) map[string]string {
 	result := make(map[string]string)
 	pairs := strings.Split(s, pairSep)

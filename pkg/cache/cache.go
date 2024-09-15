@@ -9,19 +9,20 @@ import (
 type Cache interface {
 	// Returns the value for the given key.
 	// If the key is not found, it returns nil and false.
-	Get(ctx context.Context, key string) (any, bool)
+	Get(ctx context.Context, key string) (string, bool)
 	// Sets the value for the given key.
 	// If the key already exists, it returns an error.
-	Set(ctx context.Context, key string, value any) error
+	Set(ctx context.Context, key string, value string) error
 	// Deletes the value for the given key.
 	// If the key is not found, it returns an error.
 	Delete(ctx context.Context, key string) error
 	// Sets the expiration time for the given key.
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	// Sets the value for the given key with a specific TTL.
-	SetWithTTL(ctx context.Context, key string, value any, ttl time.Duration) error
+	SetWithTTL(ctx context.Context, key string, value string, ttl time.Duration) error
 }
 
+// CacheConfig is the configuration for the cache.
 type CacheConfig struct {
 	// local/remote, default is local
 	Mode            string
@@ -34,7 +35,8 @@ type CacheConfig struct {
 	ApplyTouch bool
 }
 
-func NewCache(cacheCfg *CacheConfig) (Cache, func()) {
+// NewCache creates a new cache instance based on the provided configuration.
+func NewCache(cacheCfg *CacheConfig) (Cache, error, func()) {
 	if cacheCfg.Mode == "remote" {
 		return NewRemoteCacheValkey(cacheCfg)
 	}
