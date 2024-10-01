@@ -55,18 +55,16 @@ func NewTinkCryptoHandler(c *TinkConfiguration) *TinkCryptoHandler {
 	return &TinkCryptoHandler{ksh: handle, aead: aead}
 }
 
-func (h *TinkCryptoHandler) Encrypt(ctx context.Context, plain []byte) ([]byte, error) {
-	ad := []byte("caas ums")
-	cipher, err := h.aead.Encrypt(plain, ad)
+func (h *TinkCryptoHandler) Encrypt(ctx context.Context, plain, associatedData []byte) ([]byte, error) {
+	cipher, err := h.aead.Encrypt(plain, associatedData)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encrypt")
 	}
 	return cipher, nil
 }
 
-func (h *TinkCryptoHandler) Decrypt(ctx context.Context, cipher []byte) ([]byte, error) {
-	ad := []byte("caas ums")
-	decrypted, err := h.aead.Decrypt(cipher, ad)
+func (h *TinkCryptoHandler) Decrypt(ctx context.Context, cipher, associatedData []byte) ([]byte, error) {
+	decrypted, err := h.aead.Decrypt(cipher, associatedData)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to decrypt")
 	}

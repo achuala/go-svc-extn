@@ -10,14 +10,14 @@ import (
 // LocalCacheRistretto is an implementation of Cache that uses Ristretto.
 // It provides a local in-memory caching solution.
 type LocalCacheRistretto struct {
-	cache *ristretto.Cache
+	cache *ristretto.Cache[string, string]
 	ttl   time.Duration
 }
 
 // NewLocalCacheRistretto creates a new instance of LocalCacheRistretto.
 // It initializes the Ristretto cache with the provided configuration.
 func NewLocalCacheRistretto(cacheCfg *CacheConfig) (*LocalCacheRistretto, error, func()) {
-	cache, err := ristretto.NewCache(&ristretto.Config{
+	cache, err := ristretto.NewCache[string, string](&ristretto.Config[string, string]{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).
 		BufferItems: 64,      // Number of keys per Get buffer.
@@ -38,7 +38,7 @@ func (c *LocalCacheRistretto) Get(ctx context.Context, key string) (string, bool
 	if !found {
 		return "", false
 	}
-	return v.(string), true
+	return v, true
 }
 
 // Set stores a value in the cache for the given key.

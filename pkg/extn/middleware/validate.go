@@ -45,7 +45,7 @@ func handleValidationError(err error) error {
 	errMeta := make(map[string]string)
 	if pvErr, ok := err.(*protovalidate.ValidationError); ok {
 		for _, violation := range pvErr.Violations {
-			errMeta[violation.FieldPath] = violation.Message
+			errMeta[*violation.FieldPath] = *violation.Message
 		}
 	} else {
 		errMeta["message"] = err.Error()

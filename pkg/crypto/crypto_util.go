@@ -19,6 +19,7 @@ import (
 type CryptoUtil struct {
 	hashProvider   hash.Hasher
 	cryptoProvider encdec.CryptoHandler
+	ad             []byte
 }
 
 type CryptoConfig struct {
@@ -32,8 +33,7 @@ func NewCryptoUtil(cfg *CryptoConfig) *CryptoUtil {
 	hasher := hash.NewHasherSipHash24(&conf)
 	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KeySetData: cfg.KeysetData}
 	cryptoProvider := encdec.NewTinkCryptoHandler(tinkCfg)
-	return &CryptoUtil{
-		hashProvider: hasher, cryptoProvider: cryptoProvider}
+	return &CryptoUtil{hasher, cryptoProvider, []byte("8af14fe29dc1af27646dc61f")}
 
 }
 
@@ -63,7 +63,7 @@ func (h *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []by
 // Encrypt encrypts the given plain text.
 // It returns the encrypted value of the plain text.
 func (u *CryptoUtil) Encrypt(ctx context.Context, plainText []byte) (string, error) {
-	if cipherText, err := u.cryptoProvider.Encrypt(ctx, []byte(plainText)); err != nil {
+	if cipherText, err := u.cryptoProvider.Encrypt(ctx, plainText, u.ad); err != nil {
 		return "", err
 	} else {
 		return base64.RawStdEncoding.EncodeToString(cipherText), nil
@@ -76,7 +76,7 @@ func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, e
 	if cipher, err := base64.RawStdEncoding.DecodeString(cipeherText); err != nil {
 		return nil, errors.Wrap(err, "unable to decode")
 	} else {
-		if plainText, err := u.cryptoProvider.Decrypt(ctx, cipher); err != nil {
+		if plainText, err := u.cryptoProvider.Decrypt(ctx, cipher, u.ad); err != nil {
 			return nil, err
 		} else {
 			return plainText, nil
