@@ -49,7 +49,7 @@ func (c *caasKmsClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 		return nil, fmt.Errorf("keyURI must start with prefix %s, but got %s", c.uriPrefix, keyURI)
 	}
 	// Retrieve the KEK (Key Encryption Key) for the given URI
-	kek, ok := c.keyStore[keyURI]
+	_, ok := c.keyStore[keyURI]
 	if !ok {
 		return nil, fmt.Errorf("key not found for URI: %s", keyURI)
 	}
