@@ -4,6 +4,12 @@ package options;
 
 import "google/protobuf/descriptor.proto";
 
+option go_package = "github.com/achuala/go-svc-extn/gen/go/options;options";
+option java_multiple_files = true;
+option java_outer_classname = "LogOptionsProto";
+option java_package = "com.achuala.gosvcextn.options";
+
+
 message Sensitive {
   oneof log_action {
     // Indicates to clear the data while logging
