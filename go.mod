@@ -6,7 +6,7 @@ require (
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/bufbuild/protovalidate-go v0.7.2
 	github.com/dchest/siphash v1.2.3
-	github.com/dgraph-io/ristretto v1.0.0
+	github.com/dgraph-io/ristretto v0.2.0
 	github.com/go-crypt/crypt v0.3.1
 	github.com/go-kratos/kratos/v2 v2.8.1
 	github.com/godruoyi/go-snowflake v0.0.2
