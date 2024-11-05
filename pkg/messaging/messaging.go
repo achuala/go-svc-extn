@@ -15,5 +15,10 @@ type NatsJsConsumerConfig struct {
 	DurableName  string
 	ConsumerName string
 	StreamName   string
-	HandlerFunc  func(ctx context.Context, msg *Msg) error
+	HandlerFunc  func(ctx context.Context, msg *Message) error
+}
+
+type Message struct {
+	Headers map[string][]string
+	Data    []byte
 }
