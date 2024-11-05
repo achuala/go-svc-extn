@@ -25,16 +25,15 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 		nc.ReconnectWait(1 * time.Second),
 	}
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
-	conn, err := nc.Connect(cfg.Address, options...)
-	if err != nil {
-		return nil, nil, err
-	}
-	log.Infof("publisher connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
-	publisher, err := watermill_nats.NewPublisherWithNatsConn(
-		conn,
-		watermill_nats.PublisherPublishConfig{JetStream: watermill_nats.JetStreamConfig{Disabled: false, AutoProvision: false}},
+	log.Infof("publisher connecting  to nats at - %s", cfg.Address)
+	publisher, err := watermill_nats.NewPublisher(
+		watermill_nats.PublisherConfig{
+			URL:         cfg.Address,
+			NatsOptions: options,
+		},
 		wmLogger,
 	)
+
 	if err != nil {
 		return nil, nil, err
 	}
