@@ -1,6 +1,9 @@
 package messaging
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type BrokerConfig struct {
 	Broker  string
@@ -8,7 +11,9 @@ type BrokerConfig struct {
 	Timeout time.Duration
 }
 
-type NatsJsSubscriberConfig struct {
+type NatsJsConsumerConfig struct {
 	DurableName  string
 	ConsumerName string
+	StreamName   string
+	HandlerFunc  func(ctx context.Context, msg *Msg) error
 }
