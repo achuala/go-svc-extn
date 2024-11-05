@@ -3,7 +3,7 @@ package nats
 import (
 	"time"
 
-	watermill_nats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
+	watermill_nats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/jetstream"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/achuala/go-svc-extn/pkg/messaging"
 	"github.com/achuala/go-svc-extn/pkg/util/idgen"
@@ -23,14 +23,18 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
 	}
+	conn, err := nc.Connect(cfg.Address, options...)
+	if err != nil {
+		return nil, nil, err
+	}
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
 
 	publisher, err := watermill_nats.NewPublisher(
 		watermill_nats.PublisherConfig{
-			URL:         cfg.Address,
-			NatsOptions: options,
+			URL:    cfg.Address,
+			Conn:   conn,
+			Logger: wmLogger,
 		},
-		wmLogger,
 	)
 	if err != nil {
 		return nil, nil, err
