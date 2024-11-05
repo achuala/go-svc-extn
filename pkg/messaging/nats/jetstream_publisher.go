@@ -3,15 +3,18 @@ package nats
 import (
 	"time"
 
+	watermill_nats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
+	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/achuala/go-svc-extn/pkg/messaging"
+	"github.com/achuala/go-svc-extn/pkg/util/idgen"
 	cloudevents "github.com/cloudevents/sdk-go"
-	"github.com/go-kratos/kratos/v2/log"
 	nc "github.com/nats-io/nats.go"
+
+	"github.com/go-kratos/kratos/v2/log"
 )
 
 type NatsJsPublisher struct {
-	conn *nc.Conn
-	js   nc.JetStream
+	publisher message.Publisher
 }
 
 func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJsPublisher, func(), error) {
@@ -21,36 +24,41 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
 	}
+	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
 	conn, err := nc.Connect(cfg.Address, options...)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Infof("publisher connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
-	js, err := conn.JetStream()
+	publisher, err := watermill_nats.NewPublisherWithNatsConn(
+		conn,
+		watermill_nats.PublisherPublishConfig{JetStream: watermill_nats.JetStreamConfig{Disabled: false, AutoProvision: false}},
+		wmLogger,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	jsPublisher := &NatsJsPublisher{conn: conn, js: js}
+	jsPublisher := &NatsJsPublisher{publisher: publisher}
 	return jsPublisher, func() {
-		conn.Close()
+		publisher.Close()
 	}, nil
 }
 
-func (p *NatsJsPublisher) PublishEvent(topic string, event *cloudevents.Event) error {
+func (n *NatsJsPublisher) PublishEvent(topic string, event *cloudevents.Event) error {
 	dataBytes, err := event.MarshalJSON()
 	if err != nil {
 		return err
 	}
-	msg := nc.NewMsg(topic)
-	msg.Data = dataBytes
-	_, err = p.js.PublishMsg(msg)
-	return err
+
+	msg := message.NewMessage(event.ID(), dataBytes)
+	return n.publisher.Publish(topic, msg)
 }
 
-func (p *NatsJsPublisher) Publish(topic string, data []byte) error {
-	msg := nc.NewMsg(topic)
-	msg.Data = data
-	_, err := p.js.PublishMsg(msg)
-	return err
+func (n *NatsJsPublisher) PublishMessage(topic string, msg *message.Message) error {
+	return n.publisher.Publish(topic, msg)
+}
+
+func (n *NatsJsPublisher) Publish(topic string, data []byte) error {
+	msg := message.NewMessage(idgen.NewId(), data)
+	return n.publisher.Publish(topic, msg)
 }
