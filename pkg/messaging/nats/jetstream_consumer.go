@@ -33,6 +33,7 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 	if err != nil {
 		return nil, nil, err
 	}
+	log.Infof("consumer connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
 			Name:      subCfg.ConsumerName,

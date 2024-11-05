@@ -15,6 +15,7 @@ type NatsJsPublisher struct {
 }
 
 func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJsPublisher, func(), error) {
+	log := log.NewHelper(logger)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
@@ -24,7 +25,7 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 	if err != nil {
 		return nil, nil, err
 	}
-
+	log.Infof("publisher connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
 	js, err := conn.JetStream()
 	if err != nil {
 		return nil, nil, err
