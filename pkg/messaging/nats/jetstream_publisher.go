@@ -30,6 +30,7 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 		watermill_nats.PublisherConfig{
 			URL:         cfg.Address,
 			NatsOptions: options,
+			Marshaler:   &watermill_nats.NATSMarshaler{},
 		},
 		wmLogger,
 	)

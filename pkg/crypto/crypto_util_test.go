@@ -15,7 +15,8 @@ var hmacKey = "QWVzR2NtS2V5EhIaECT2tUhyiuLKsiUlTbWSZq"
 var cfg = &CryptoConfig{KmsUri: kmsUri, KeysetData: keySetData, HmacKey: hmacKey}
 
 func TestSipHash24(t *testing.T) {
-	cu := NewCryptoUtil(cfg)
+	cu, err := NewCryptoUtil(cfg)
+	require.NoError(t, err)
 	plain := []byte("James Bond")
 	hash, err := cu.CreateAlias(context.Background(), plain)
 	require.NoError(t, err)
@@ -24,7 +25,8 @@ func TestSipHash24(t *testing.T) {
 }
 
 func TestAesEncDec(t *testing.T) {
-	cu := NewCryptoUtil(cfg)
+	cu, err := NewCryptoUtil(cfg)
+	require.NoError(t, err)
 	plain := []byte("James Bond")
 	cipher, err := cu.Encrypt(context.Background(), plain)
 	require.NoError(t, err)

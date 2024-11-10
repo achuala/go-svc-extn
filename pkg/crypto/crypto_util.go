@@ -28,13 +28,15 @@ type CryptoConfig struct {
 	HmacKey    string
 }
 
-func NewCryptoUtil(cfg *CryptoConfig) *CryptoUtil {
+func NewCryptoUtil(cfg *CryptoConfig) (*CryptoUtil, error) {
 	conf := hash.SipHashConfiguration{Key: cfg.HmacKey}
 	hasher := hash.NewHasherSipHash24(&conf)
 	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KeySetData: cfg.KeysetData}
-	cryptoProvider := encdec.NewTinkCryptoHandler(tinkCfg)
-	return &CryptoUtil{hasher, cryptoProvider, []byte("8af14fe29dc1af27646dc61f")}
-
+	cryptoProvider, err := encdec.NewTinkCryptoHandler(tinkCfg)
+	if err != nil {
+		return nil, err
+	}
+	return &CryptoUtil{hasher, cryptoProvider, []byte("8af14fe29dc1af27646dc61f")}, nil
 }
 
 // CreateAlias creates an alias for the given plain text.

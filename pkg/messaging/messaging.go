@@ -1,8 +1,9 @@
 package messaging
 
 import (
-	"context"
 	"time"
+
+	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 type BrokerConfig struct {
@@ -15,10 +16,7 @@ type NatsJsConsumerConfig struct {
 	DurableName  string
 	ConsumerName string
 	StreamName   string
-	HandlerFunc  func(ctx context.Context, msg *Message) error
-}
-
-type Message struct {
-	Headers map[string][]string
-	Data    []byte
+	Subject      string
+	HandlerName  string
+	HandlerFunc  func(msg *message.Message) error
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"log"
 
 	"github.com/pkg/errors"
 	"github.com/tink-crypto/tink-go/v2/aead"
@@ -22,37 +21,37 @@ type TinkCryptoHandler struct {
 	aead tink.AEAD
 }
 
-func NewTinkCryptoHandler(c *TinkConfiguration) *TinkCryptoHandler {
+func NewTinkCryptoHandler(c *TinkConfiguration) (*TinkCryptoHandler, error) {
 	client, err := NewCaasKmsClient(c.KekUri)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	kekAEAD, err := client.GetAEAD(c.KekUri)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	keysetAssociatedData := []byte("caas kek")
 
 	encryptedKeyset, err := base64.RawURLEncoding.DecodeString(c.KeySetData)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	// To use the primitive, we first need to decrypt the keyset. We use the same
 	// KEK AEAD and the same associated data that we used to encrypt it.
 	reader := keyset.NewBinaryReader(bytes.NewReader(encryptedKeyset))
 	handle, err := keyset.ReadWithAssociatedData(reader, kekAEAD, keysetAssociatedData)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	aead, err := aead.New(handle)
 
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return &TinkCryptoHandler{ksh: handle, aead: aead}
+	return &TinkCryptoHandler{ksh: handle, aead: aead}, nil
 }
 
 func (h *TinkCryptoHandler) Encrypt(ctx context.Context, plain, associatedData []byte) ([]byte, error) {
