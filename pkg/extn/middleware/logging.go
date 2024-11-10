@@ -46,12 +46,16 @@ func logMiddleware(ctx context.Context, req interface{}, handler middleware.Hand
 		component string
 	)
 	startTime := time.Now()
-	if info, ok := transport.FromServerContext(ctx); ok {
-		component = info.Kind().String()
-		operation = info.Operation()
-	} else if info, ok := transport.FromClientContext(ctx); ok {
-		component = info.Kind().String()
-		operation = info.Operation()
+	if kind == "server" {
+		if info, ok := transport.FromServerContext(ctx); ok {
+			component = info.Kind().String()
+			operation = info.Operation()
+		}
+	} else if kind == "client" {
+		if info, ok := transport.FromClientContext(ctx); ok {
+			component = info.Kind().String()
+			operation = info.Operation()
+		}
 	}
 	reply, err = handler(ctx, req)
 	if se := errors.FromError(err); se != nil {
