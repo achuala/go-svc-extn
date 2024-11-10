@@ -30,9 +30,9 @@ func NewHttpClient(ctx context.Context, httpClientCfg HttpClientConfig, logger l
 	b3Propagator := b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader | b3.B3SingleHeader))
 	httpClient, err := khttp.NewClient(ctx, khttp.WithEndpoint(httpClientCfg.Endpoint), khttp.WithMiddleware(
 		recovery.Recovery(),
+		extnmw.Client(logger),
 		tracing.Client(tracing.WithPropagator(b3Propagator)),
 		extnmw.ClientCorrelationIdInjector(),
-		extnmw.Client(logger),
 	), khttp.WithTimeout(httpClientCfg.Timeout))
 
 	if err != nil {
