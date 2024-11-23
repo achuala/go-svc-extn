@@ -6,7 +6,7 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.4.1
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.2
 	github.com/btcsuite/btcutil v1.0.2
-	github.com/bufbuild/protovalidate-go v0.7.2
+	github.com/bufbuild/protovalidate-go v0.7.3
 	github.com/cloudevents/sdk-go v1.2.0
 	github.com/dchest/siphash v1.2.3
 	github.com/dgraph-io/ristretto v0.2.0
@@ -24,14 +24,14 @@ require (
 	github.com/valkey-io/valkey-go v1.0.49
 	go.opentelemetry.io/contrib/propagators/b3 v1.32.0
 	golang.org/x/crypto v0.29.0
-	google.golang.org/protobuf v1.35.1
-	gorm.io/driver/postgres v1.5.9
+	google.golang.org/protobuf v1.35.2
+	gorm.io/driver/postgres v1.5.10
 	gorm.io/gorm v1.25.12
 	gorm.io/plugin/opentelemetry v0.1.8
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.1-20240920164238-5a7b106cbb87.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.2-20240920164238-5a7b106cbb87.1 // indirect
 	cel.dev/expr v0.18.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
@@ -44,7 +44,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/form/v4 v4.2.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/google/cel-go v0.22.0 // indirect
+	github.com/google/cel-go v0.22.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -75,8 +75,8 @@ require (
 	golang.org/x/sync v0.9.0 // indirect
 	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241104194629-dd2ea8efbc28 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241104194629-dd2ea8efbc28 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/grpc v1.68.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
