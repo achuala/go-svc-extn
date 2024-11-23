@@ -19,24 +19,25 @@ import (
 type CryptoUtil struct {
 	hashProvider   hash.Hasher
 	cryptoProvider encdec.CryptoHandler
-	ad             []byte
 }
 
 type CryptoConfig struct {
-	KmsUri     string
-	KeysetData string
-	HmacKey    string
+	KmsUri       string
+	KmsUriPrefix string
+	KeysetData   string
+	HmacKey      string
+	KekAd        []byte
 }
 
 func NewCryptoUtil(cfg *CryptoConfig) (*CryptoUtil, error) {
 	conf := hash.SipHashConfiguration{Key: cfg.HmacKey}
 	hasher := hash.NewHasherSipHash24(&conf)
-	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KeySetData: cfg.KeysetData}
+	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KekUriPrefix: cfg.KmsUriPrefix, KeySetData: cfg.KeysetData, KekAd: cfg.KekAd}
 	cryptoProvider, err := encdec.NewTinkCryptoHandler(tinkCfg)
 	if err != nil {
 		return nil, err
 	}
-	return &CryptoUtil{hasher, cryptoProvider, []byte("8af14fe29dc1af27646dc61f")}, nil
+	return &CryptoUtil{hasher, cryptoProvider}, nil
 }
 
 // CreateAlias creates an alias for the given plain text.
@@ -64,8 +65,8 @@ func (u *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []by
 
 // Encrypt encrypts the given plain text.
 // It returns the encrypted value of the plain text.
-func (u *CryptoUtil) Encrypt(ctx context.Context, plainText []byte) (string, error) {
-	if cipherText, err := u.cryptoProvider.Encrypt(ctx, plainText, u.ad); err != nil {
+func (u *CryptoUtil) Encrypt(ctx context.Context, plainText, ad []byte) (string, error) {
+	if cipherText, err := u.cryptoProvider.Encrypt(ctx, plainText, ad); err != nil {
 		return "", err
 	} else {
 		return base64.RawStdEncoding.EncodeToString(cipherText), nil
@@ -74,11 +75,11 @@ func (u *CryptoUtil) Encrypt(ctx context.Context, plainText []byte) (string, err
 
 // Decrypt decrypts the given cipher text.
 // It returns the decrypted value of the cipher text.
-func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, error) {
+func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string, ad []byte) ([]byte, error) {
 	if cipher, err := base64.RawStdEncoding.DecodeString(cipeherText); err != nil {
 		return nil, errors.Wrap(err, "unable to decode")
 	} else {
-		if plainText, err := u.cryptoProvider.Decrypt(ctx, cipher, u.ad); err != nil {
+		if plainText, err := u.cryptoProvider.Decrypt(ctx, cipher, ad); err != nil {
 			return nil, err
 		} else {
 			return plainText, nil

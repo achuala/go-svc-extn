@@ -12,8 +12,10 @@ import (
 )
 
 type TinkConfiguration struct {
-	KekUri     string
-	KeySetData string
+	KekUri       string
+	KekUriPrefix string
+	KeySetData   string
+	KekAd        []byte
 }
 
 type TinkCryptoHandler struct {
@@ -22,7 +24,7 @@ type TinkCryptoHandler struct {
 }
 
 func NewTinkCryptoHandler(c *TinkConfiguration) (*TinkCryptoHandler, error) {
-	client, err := NewCaasKmsClient(c.KekUri)
+	client, err := NewCaasKmsClient(c.KekUriPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +33,7 @@ func NewTinkCryptoHandler(c *TinkConfiguration) (*TinkCryptoHandler, error) {
 		return nil, err
 	}
 
-	keysetAssociatedData := []byte("caas kek")
+	keysetAssociatedData := c.KekAd
 
 	encryptedKeyset, err := base64.RawURLEncoding.DecodeString(c.KeySetData)
 	if err != nil {

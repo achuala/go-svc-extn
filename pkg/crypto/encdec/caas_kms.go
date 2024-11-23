@@ -20,8 +20,6 @@ var _ registry.KMSClient = (*caasKmsClient)(nil)
 
 type caasKmsClient struct {
 	uriPrefix string
-	// keyStore holds the in-memory mapping of URIs to KEKs (Key Encryption Keys).
-	keyStore map[string][]byte
 }
 
 // NewCaasKmsClient returns a KMS client which will handle keys with uriPrefix prefix.
@@ -32,7 +30,6 @@ func NewCaasKmsClient(uriPrefix string) (registry.KMSClient, error) {
 	}
 	kmsClient := &caasKmsClient{
 		uriPrefix: uriPrefix,
-		keyStore:  make(map[string][]byte),
 	}
 	registry.RegisterKMSClient(kmsClient)
 	return kmsClient, nil
@@ -47,11 +44,6 @@ func (c *caasKmsClient) Supported(keyURI string) bool {
 func (c *caasKmsClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 	if !c.Supported(keyURI) {
 		return nil, fmt.Errorf("keyURI must start with prefix %s, but got %s", c.uriPrefix, keyURI)
-	}
-	// Retrieve the KEK (Key Encryption Key) for the given URI
-	_, ok := c.keyStore[keyURI]
-	if !ok {
-		return nil, fmt.Errorf("key not found for URI: %s", keyURI)
 	}
 
 	encodeKeyset := strings.TrimPrefix(keyURI, c.uriPrefix)
