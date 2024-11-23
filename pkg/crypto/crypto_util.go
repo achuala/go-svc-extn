@@ -50,8 +50,8 @@ func (u *CryptoUtil) CreateAlias(ctx context.Context, plain []byte) ([]byte, err
 
 // CompareHash compares the plain text with the stored hash.
 // It returns true if the plain text is the same as the stored hash.
-func (h *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []byte) (bool, error) {
-	newHash, err := h.CreateAlias(ctx, plainName)
+func (u *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []byte) (bool, error) {
+	newHash, err := u.CreateAlias(ctx, plainName)
 	if err != nil {
 		return false, err
 	}
@@ -88,12 +88,12 @@ func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string) ([]byte, e
 
 // GenerateAesKey generates an AES key.
 // It returns the AES key.
-func (u *CryptoUtil) GenerateAesKey(ctx context.Context, key string) (string, error) {
-	sessionKey, err := u.generateKey()
+func GenerateAesKey(ctx context.Context, key string) (string, error) {
+	sessionKey, err := generateKey()
 	return sessionKey, err
 }
 
-func (h *CryptoUtil) generateKey() (string, error) {
+func generateKey() (string, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
 	if err != nil {
@@ -104,7 +104,7 @@ func (h *CryptoUtil) generateKey() (string, error) {
 
 // EncryptWithKey encrypts the given plain text with the given key.
 // It returns the encrypted value of the plain text.
-func (u *CryptoUtil) EncryptWithKey(ctx context.Context, key, plainText string) (string, error) {
+func EncryptWithKey(ctx context.Context, key, plainText string) (string, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {
 		return "", err
@@ -134,7 +134,7 @@ func (u *CryptoUtil) EncryptWithKey(ctx context.Context, key, plainText string) 
 
 // DecryptWithKey decrypts the given cipher text with the given key.
 // It returns the decrypted value of the cipher text.
-func (u *CryptoUtil) DecryptWithKey(ctx context.Context, key, cipeherText string) ([]byte, error) {
+func DecryptWithKey(ctx context.Context, key, cipeherText string) ([]byte, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {
 		return nil, err
