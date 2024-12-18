@@ -35,8 +35,6 @@ func (w *WatermillLoggerAdapter) Info(msg string, fields watermill.LogFields) {
 
 // Trace implements watermill.LoggerAdapter.
 func (w *WatermillLoggerAdapter) Trace(msg string, fields watermill.LogFields) {
-	logFields := logAttrsFromFields(fields)
-	w.logHelper.Debug(msg, logFields)
 }
 
 // With implements watermill.LoggerAdapter.
