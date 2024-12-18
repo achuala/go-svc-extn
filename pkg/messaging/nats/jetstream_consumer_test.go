@@ -14,7 +14,7 @@ import (
 )
 
 func TestNatsJsConsumer(t *testing.T) {
-	log := log.NewStdLogger(os.Stdout)
+	logger := log.NewStdLogger(os.Stdout)
 	cfg := messaging.BrokerConfig{
 		Broker:  "nats",
 		Address: "nats://localhost:4222",
@@ -38,7 +38,7 @@ func TestNatsJsConsumer(t *testing.T) {
 		Subject:      "test.>",
 		HandlerName:  "test-handler1",
 		HandlerFunc:  handlerFunc,
-	}, log)
+	}, logger)
 	if err != nil {
 		t.Fatalf("failed to create consumer: %v", err)
 	}
