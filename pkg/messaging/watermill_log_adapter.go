@@ -16,10 +16,9 @@ func NewWatermillLoggerAdapter(logger log.Logger) watermill.LoggerAdapter {
 
 // Debug implements watermill.LoggerAdapter.
 func (w *WatermillLoggerAdapter) Debug(msg string, fields watermill.LogFields) {
-	if w.logHelper.Enabled(log.LevelDebug) {
-		logFields := logAttrsFromFields(fields)
-		w.logHelper.Debug(msg, logFields)
-	}
+	logFields := logAttrsFromFields(fields)
+	w.logHelper.Debug(msg, logFields)
+
 }
 
 // Error implements watermill.LoggerAdapter.
@@ -30,18 +29,14 @@ func (w *WatermillLoggerAdapter) Error(msg string, err error, fields watermill.L
 
 // Info implements watermill.LoggerAdapter.
 func (w *WatermillLoggerAdapter) Info(msg string, fields watermill.LogFields) {
-	if w.logHelper.Enabled(log.LevelInfo) {
-		logFields := logAttrsFromFields(fields)
-		w.logHelper.Info(msg, logFields)
-	}
+	logFields := logAttrsFromFields(fields)
+	w.logHelper.Info(msg, logFields)
 }
 
 // Trace implements watermill.LoggerAdapter.
 func (w *WatermillLoggerAdapter) Trace(msg string, fields watermill.LogFields) {
-	if w.logHelper.Enabled(log.LevelDebug) {
-		logFields := logAttrsFromFields(fields)
-		w.logHelper.Debug(msg, logFields)
-	}
+	logFields := logAttrsFromFields(fields)
+	w.logHelper.Debug(msg, logFields)
 }
 
 // With implements watermill.LoggerAdapter.

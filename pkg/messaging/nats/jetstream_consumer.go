@@ -21,24 +21,18 @@ type NatsJsConsumer struct {
 	log        *log.Helper
 }
 
-func defaultStreamConfigurator(streamName, topic string) jetstream.StreamConfig {
-	return jetstream.StreamConfig{
-		Name:     streamName,
-		Subjects: []string{topic},
-	}
-}
-
 func consumerConfigurator(consumerName, streamName, subject string) watermill_nats.ResourceInitializer {
 	return func(ctx context.Context, js jetstream.JetStream, topic string) (jetstream.Consumer, func(context.Context, watermill.LoggerAdapter), error) {
-		streamConfig := defaultStreamConfigurator(streamName, subject)
-
-		stream, err := js.Stream(ctx, streamConfig.Name)
+		stream, err := js.Stream(ctx, streamName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get stream for topic %s: %w", subject, err)
 		}
 		consumer, err := stream.Consumer(ctx, consumerName)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get consumer %s: %w", consumerName, err)
+		}
 
-		return consumer, nil, err
+		return consumer, nil, nil
 	}
 }
 
@@ -55,24 +49,26 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 		return nil, nil, err
 	}
 	log.Infof("consumer connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
+	// Consumer configuration just uses the durable name, the expectation is that the stream is already created and consumer is already created
+	// with necessary configuration.
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
-			Name:      subCfg.ConsumerName,
-			Durable:   subCfg.DurableName,
-			AckPolicy: jetstream.AckExplicitPolicy,
+			Durable:       subCfg.DurableName,
+			AckPolicy:     jetstream.AckExplicitPolicy,
+			FilterSubject: subCfg.Subject,
 		}
 	}
-	jsConfig := watermill_nats.SubscriberConfig{
+	subscriberConfig := watermill_nats.SubscriberConfig{
 		Conn:                conn,
 		Logger:              wmLogger,
 		ConfigureConsumer:   consumerConfig,
 		ResourceInitializer: consumerConfigurator(subCfg.ConsumerName, subCfg.StreamName, subCfg.Subject),
 	}
-	subscriber, err := watermill_nats.NewSubscriber(jsConfig)
+	subscriber, err := watermill_nats.NewSubscriber(subscriberConfig)
 	if err != nil {
 		return nil, nil, err
 	}
-	router, err := message.NewRouter(message.RouterConfig{}, wmLogger)
+	router, err := message.NewRouter(message.RouterConfig{CloseTimeout: 5 * time.Second}, wmLogger)
 	if err != nil {
 		return nil, nil, err
 	}
