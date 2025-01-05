@@ -6,9 +6,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
+
+const ALGORITHM_KEY = "HMAC-SHA256"
+const TERMINATOR = "@@"
+const CREDENTIAL_KEY = "creds"
+const SIGNED_HEADERS_KEY = "x-kplex-si"
+const SIGNATURE_KEY = "sign"
 
 // AccessSecretProvider is an interface for retrieving access secrets.
 // Implementations of this interface should provide a method to get an access secret
@@ -67,7 +74,6 @@ func sha256Hash(input string) []byte {
 // It combines the access secret key, timestamp, API name, and API version
 // to create a unique signature key.
 func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []byte {
-	const TERMINATOR = "@@"
 
 	kSecret := []byte(accessSecretKey)
 	kDate := hmacSha256(timeStamp, kSecret)
@@ -82,7 +88,7 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 //
 // Parameters:
 //   - accessSecretKey: The secret key used for signature generation
-//   - payload: The request body or payload to be signed
+//   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
 //   - headers: A map containing required headers:
 //   - "ts": Timestamp
 //   - "api": API name
@@ -95,12 +101,9 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 //
 // The signature is computed using the following steps:
 //  1. Generate a signing key using the secret key and header information
-//  2. Calculate SHA256 hash of the payload
-//  3. Combine channel, userId, and payload hash
-//  4. Create final signature using algorithm, timestamp, and request hash
-func ComputeSignature(accessSecretKey, payload string, headers map[string]string) string {
-	const ALGORITHM_KEY = "HMAC-SHA256"
-
+//  2. Combine channel, userId, and payload hash
+//  3. Create final signature using algorithm, timestamp, and request hash
+func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]string) string {
 	timestamp := headers["ts"]
 	apiName := headers["api"]
 	apiVersion := headers["ver"]
@@ -109,9 +112,7 @@ func ComputeSignature(accessSecretKey, payload string, headers map[string]string
 
 	signingKey := getSignatureKey(accessSecretKey, timestamp, apiName, apiVersion)
 
-	payloadHash := sha256Hash(payload)
-
-	request := channel + userId + hex.EncodeToString(payloadHash)
+	request := channel + userId + payloadHash
 
 	stringToSign := ALGORITHM_KEY + timestamp + hex.EncodeToString(sha256Hash(request))
 
@@ -126,7 +127,7 @@ func ComputeSignature(accessSecretKey, payload string, headers map[string]string
 //     Format: "alg=HMAC-SHA256/creds=access-key:value/sign=signature"
 //   - signedHeader: Headers used in signature computation
 //     Format: "ts=timestamp/api=apiName/ver=version/chnl=channel/usrid=userId"
-//   - payload: The request body or payload to verify
+//   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
 //   - accessSecretProvider: Interface to retrieve access secrets for signature computation
 //
 // Returns:
@@ -140,7 +141,7 @@ func ComputeSignature(accessSecretKey, payload string, headers map[string]string
 //   - SIGNATURE_MISSING: If signature is not provided
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
-func VerifySignature(authorizationHeader, signedHeader, payload string, accessSecretProvider AccessSecretProvider) (bool, error) {
+func VerifySignature(authorizationHeader, signedHeader, payloadHash string, accessSecretProvider AccessSecretProvider) (bool, error) {
 	tokens := splitKeyValue(authorizationHeader, "/", "=")
 	if len(tokens) < 3 {
 		return false, errors.New("INVALID_AUTHORIZATION_HEADER")
@@ -167,7 +168,7 @@ func VerifySignature(authorizationHeader, signedHeader, payload string, accessSe
 	if len(singedHeaders) < 5 {
 		return false, errors.New("INVALID_SIGNED_HEADERS")
 	}
-	computedSignature := ComputeSignature(accessSecret, payload, singedHeaders)
+	computedSignature := ComputeSignature(accessSecret, payloadHash, singedHeaders)
 	if !strings.EqualFold(computedSignature, providedSignature) {
 		return false, errors.New("SIGNATURE_MISMATCH")
 	}
@@ -185,4 +186,88 @@ func splitKeyValue(s, pairSep, kvSep string) map[string]string {
 		}
 	}
 	return result
+}
+
+func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature string) string {
+	const algorithmKey = "alg="
+	const algorithm = "HMAC-SHA256"
+	const credential = "creds="
+	const signedHeaders = "signed-headers="
+	const signature = "sign="
+	const separator = ","
+
+	var parts strings.Builder
+	parts.Grow(len(algorithmKey) + len(algorithm) + len(separator) +
+		len(credential) + len(credentialStr) + len(separator) +
+		len(signedHeaders) + len(signedHeadersStr) + len(separator) +
+		len(signature) + len(signingSignature),
+	)
+	parts.WriteString(algorithmKey)
+	parts.WriteString(algorithm)
+	parts.WriteString(separator)
+	parts.WriteString(credential)
+	parts.WriteString(credentialStr)
+	parts.WriteString(separator)
+	parts.WriteString(signedHeaders)
+	parts.WriteString(signedHeadersStr)
+	parts.WriteString(separator)
+	parts.WriteString(signature)
+	parts.WriteString(signingSignature)
+	return parts.String()
+}
+
+// SignPayload generates a signature and required headers for API request authentication.
+//
+// Parameters:
+//   - apiName: Name of the API being called
+//   - apiVersion: Version of the API
+//   - channel: Channel identifier for the request
+//   - userId: User ID making the request
+//   - payload: Request body or payload to be signed
+//   - accessKeyId: Access key identifier for authentication
+//   - accessSecretProvider: Interface to retrieve access secrets
+//
+// Returns:
+//   - signature: The computed signature for the request
+//   - authHeader: Complete authorization header string
+//   - signedHeader: String containing all signed headers
+//   - err: Error if signature generation fails
+//
+// The function performs the following steps:
+//  1. Generates current timestamp in RFC3339 format
+//  2. Retrieves access secret using the provided accessKeyId
+//  3. Validates required parameters
+//  4. Computes payload hash and signature
+//  5. Builds authorization header with all required components
+//
+// Possible errors:
+//   - MISSING_REQUIRED_HEADERS: If any required header is empty
+//   - INVALID_ACCESS_SECRET: If access secret cannot be retrieved
+func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId string, accessSecretProvider AccessSecretProvider) (signature, authHeader, signedHeader string, err error) {
+	timestamp := time.Now().Format(time.RFC3339)
+	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
+	if err != nil {
+		return "", "", "", err
+	}
+	if apiName == "" || apiVersion == "" || channel == "" || userId == "" {
+		return "", "", "", errors.New("MISSING_REQUIRED_HEADERS")
+	}
+	if accessSecret == "" {
+		return "", "", "", errors.New("INVALID_ACCESS_SECRET")
+	}
+	headers := map[string]string{
+		"ts":    timestamp,
+		"api":   apiName,
+		"ver":   apiVersion,
+		"chnl":  channel,
+		"usrid": userId,
+	}
+	signedHeaders := ""
+	for key, value := range headers {
+		signedHeaders += key + "=" + value + "/"
+	}
+	payloadHash := hex.EncodeToString(sha256Hash(payload))
+	computedSignature := ComputeSignature(accessSecret, payloadHash, headers)
+	authHeader = buildAuthorizationHeader(accessKeyId, signedHeaders, computedSignature)
+	return computedSignature, authHeader, signedHeaders, nil
 }

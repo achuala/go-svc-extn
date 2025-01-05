@@ -44,6 +44,7 @@ func TestComputeSignature(t *testing.T) {
 		payload      string // Raw payload
 		headers      map[string]string
 		wantSignLen  int
+		wantErr      bool
 	}{
 		{
 			name:         "Valid signature computation",
@@ -57,6 +58,7 @@ func TestComputeSignature(t *testing.T) {
 				"usrid": "test-user",
 			},
 			wantSignLen: 64,
+			wantErr:     false,
 		},
 		{
 			name:         "Empty payload",
@@ -70,6 +72,7 @@ func TestComputeSignature(t *testing.T) {
 				"usrid": "test-user",
 			},
 			wantSignLen: 64,
+			wantErr:     false,
 		},
 		{
 			name:         "Different timestamp",
@@ -83,6 +86,7 @@ func TestComputeSignature(t *testing.T) {
 				"usrid": "test-user",
 			},
 			wantSignLen: 64,
+			wantErr:     false,
 		},
 	}
 
@@ -94,27 +98,33 @@ func TestComputeSignature(t *testing.T) {
 			payloadHash := hex.EncodeToString(hasher.Sum(nil))
 
 			// Now compute signature using the hash
-			signature := ComputeSignature(tt.accessSecret, payloadHash, tt.headers)
-
-			// Check if signature is not empty
-			if signature == "" {
-				t.Error("Expected non-empty signature")
+			signature, err := ComputeSignature(tt.accessSecret, payloadHash, tt.headers)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ComputeSignature() error = %v, wantErr %v", err, tt.wantErr)
+				return
 			}
 
-			// Check signature length
-			if len(signature) != tt.wantSignLen {
-				t.Errorf("Expected signature length %d, got %d", tt.wantSignLen, len(signature))
-			}
+			if !tt.wantErr {
+				// Check if signature is not empty
+				if signature == "" {
+					t.Error("Expected non-empty signature")
+				}
 
-			// Verify the signature can be used in verification
-			authHeader := "alg=HMAC-SHA256/creds=access-key:test-key-id/sign=" + signature
-			signedHeader := formatSignedHeader(tt.headers)
-			mockProvider := NewMockAccessSecretProvider()
-			mockProvider.secrets["test-key-id"] = tt.accessSecret
+				// Check signature length
+				if len(signature) != tt.wantSignLen {
+					t.Errorf("Expected signature length %d, got %d", tt.wantSignLen, len(signature))
+				}
 
-			valid, err := VerifySignature(authHeader, signedHeader, payloadHash, mockProvider)
-			if !valid || err != nil {
-				t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
+				// Verify the signature can be used in verification
+				authHeader := "alg=HMAC-SHA256/creds=access-key:test-key-id/sign=" + signature
+				signedHeader := formatSignedHeader(tt.headers)
+				mockProvider := NewMockAccessSecretProvider()
+				mockProvider.secrets["test-key-id"] = tt.accessSecret
+
+				valid, err := VerifySignature(authHeader, signedHeader, payloadHash, mockProvider)
+				if !valid || err != nil {
+					t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
+				}
 			}
 		})
 	}
@@ -170,7 +180,10 @@ func TestVerifySignature(t *testing.T) {
 			// For valid signature test, compute and append the actual signature
 			if tt.expectedValid {
 				headers := splitKeyValue(tt.signedHeader, "/", "=")
-				signature := ComputeSignature(mockProvider.secrets["test-key-id"], tt.payload, headers)
+				signature, err := ComputeSignature(mockProvider.secrets["test-key-id"], tt.payload, headers)
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
 				tt.authHeader = tt.authHeader + signature
 			}
 
@@ -188,6 +201,68 @@ func TestVerifySignature(t *testing.T) {
 			// Check validity
 			if valid != tt.expectedValid {
 				t.Errorf("Expected valid=%v, got %v", tt.expectedValid, valid)
+			}
+		})
+	}
+}
+
+func TestSignPayload(t *testing.T) {
+	mockProvider := NewMockAccessSecretProvider()
+	mockProvider.secrets["test-key-id"] = "test-secret-key"
+
+	tests := []struct {
+		name     string
+		api      string
+		ver      string
+		chnl     string
+		usrid    string
+		payload  string
+		keyID    string
+		provider AccessSecretProvider
+		wantErr  bool
+	}{
+		{
+			name:     "Valid payload signing",
+			api:      "test-api",
+			ver:      "v1",
+			chnl:     "web",
+			usrid:    "test-user",
+			payload:  `{"test":"data"}`,
+			keyID:    "test-key-id",
+			provider: mockProvider,
+			wantErr:  false,
+		},
+		{
+			name:     "Invalid key ID",
+			api:      "test-api",
+			ver:      "v1",
+			chnl:     "web",
+			usrid:    "test-user",
+			payload:  `{"test":"data"}`,
+			keyID:    "invalid-key",
+			provider: mockProvider,
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			signature, authHeader, signedHeader, err := SignPayload(tt.api, tt.ver, tt.chnl, tt.usrid, tt.payload, tt.keyID, tt.provider)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SignPayload() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				if signature == "" || authHeader == "" || signedHeader == "" {
+					t.Errorf("Expected non-empty signature, authHeader, and signedHeader")
+				}
+
+				// Verify the generated signature
+				valid, err := VerifySignature(authHeader, signedHeader, tt.payload, tt.provider)
+				if !valid || err != nil {
+					t.Errorf("Generated signature verification failed: valid=%v, err=%v", valid, err)
+				}
 			}
 		})
 	}
