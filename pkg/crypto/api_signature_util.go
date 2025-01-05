@@ -168,7 +168,7 @@ func VerifySignature(authorizationHeader, signedHeader, payload string, accessSe
 		return false, errors.New("INVALID_SIGNED_HEADERS")
 	}
 	computedSignature := ComputeSignature(accessSecret, payload, singedHeaders)
-	if strings.EqualFold(computedSignature, providedSignature) {
+	if !strings.EqualFold(computedSignature, providedSignature) {
 		return false, errors.New("SIGNATURE_MISMATCH")
 	}
 	return true, nil
