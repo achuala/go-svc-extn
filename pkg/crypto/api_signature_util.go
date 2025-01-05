@@ -49,7 +49,7 @@ func (p *DbAccessSecretProvider) GetAccessSecret(accessKeyId string) (string, er
 
 // HmacSha256 computes the HMAC-SHA256 of the given data using the provided key.
 // It returns the resulting hash as a byte slice.
-func HmacSha256(data string, key []byte) []byte {
+func hmacSha256(data string, key []byte) []byte {
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(data))
 	return h.Sum(nil)
@@ -57,7 +57,7 @@ func HmacSha256(data string, key []byte) []byte {
 
 // Sha256 computes the SHA256 hash of the input string.
 // It returns the resulting hash as a byte slice.
-func Sha256(input string) []byte {
+func sha256Hash(input string) []byte {
 	h := sha256.New()
 	h.Write([]byte(input))
 	return h.Sum(nil)
@@ -66,20 +66,38 @@ func Sha256(input string) []byte {
 // GetSignatureKey generates a signature key using the provided parameters.
 // It combines the access secret key, timestamp, API name, and API version
 // to create a unique signature key.
-func GetSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []byte {
+func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []byte {
 	const TERMINATOR = "@@"
 
 	kSecret := []byte(accessSecretKey)
-	kDate := HmacSha256(timeStamp, kSecret)
-	kVersion := HmacSha256(apiVersion, kDate)
-	kApi := HmacSha256(apiName, kVersion)
-	return HmacSha256(TERMINATOR, kApi)
+	kDate := hmacSha256(timeStamp, kSecret)
+	kVersion := hmacSha256(apiVersion, kDate)
+	kApi := hmacSha256(apiName, kVersion)
+	return hmacSha256(TERMINATOR, kApi)
 }
 
-// ComputeSignature generates a signature for the given payload and headers.
-// It uses the access secret key, timestamp, API name, and API version
-// to compute a unique signature.
-// The computed signature is then returned as a string.
+// ComputeSignature generates a cryptographic signature for API request validation.
+// It uses HMAC-SHA256 algorithm to create a signature based on the provided secret key,
+// payload, and headers.
+//
+// Parameters:
+//   - accessSecretKey: The secret key used for signature generation
+//   - payload: The request body or payload to be signed
+//   - headers: A map containing required headers:
+//   - "ts": Timestamp
+//   - "api": API name
+//   - "ver": API version
+//   - "chnl": Channel identifier
+//   - "usrid": User ID
+//
+// Returns:
+//   - string: The computed signature as a hexadecimal string
+//
+// The signature is computed using the following steps:
+//  1. Generate a signing key using the secret key and header information
+//  2. Calculate SHA256 hash of the payload
+//  3. Combine channel, userId, and payload hash
+//  4. Create final signature using algorithm, timestamp, and request hash
 func ComputeSignature(accessSecretKey, payload string, headers map[string]string) string {
 	const ALGORITHM_KEY = "HMAC-SHA256"
 
@@ -89,37 +107,71 @@ func ComputeSignature(accessSecretKey, payload string, headers map[string]string
 	channel := headers["chnl"]
 	userId := headers["usrid"]
 
-	signingKey := GetSignatureKey(accessSecretKey, timestamp, apiName, apiVersion)
+	signingKey := getSignatureKey(accessSecretKey, timestamp, apiName, apiVersion)
 
-	payloadHash := Sha256(payload)
+	payloadHash := sha256Hash(payload)
 
 	request := channel + userId + hex.EncodeToString(payloadHash)
 
-	stringToSign := ALGORITHM_KEY + timestamp + hex.EncodeToString(Sha256(request))
+	stringToSign := ALGORITHM_KEY + timestamp + hex.EncodeToString(sha256Hash(request))
 
-	return hex.EncodeToString(HmacSha256(stringToSign, signingKey))
+	return hex.EncodeToString(hmacSha256(stringToSign, signingKey))
 }
 
-// VerifySignature verifies the signature of the given payload and headers.
-// It uses the access secret key, timestamp, API name, and API version
-// to compute a unique signature and compare it with the provided signature.
-func VerifySignature(tokenHeader, securityHeader, payload string, accessSecretProvider AccessSecretProvider) error {
-	tokens := splitKeyValue(tokenHeader, "/", "=")
-
+// VerifySignature validates the authenticity of a request by comparing the provided signature
+// with a computed signature using the request payload and headers.
+//
+// Parameters:
+//   - authorizationHeader: The authorization header containing algorithm, credentials, and signature
+//     Format: "alg=HMAC-SHA256/creds=access-key:value/sign=signature"
+//   - signedHeader: Headers used in signature computation
+//     Format: "ts=timestamp/api=apiName/ver=version/chnl=channel/usrid=userId"
+//   - payload: The request body or payload to verify
+//   - accessSecretProvider: Interface to retrieve access secrets for signature computation
+//
+// Returns:
+//   - bool: true if signature is valid, false otherwise
+//   - error: Error if validation fails or if required parameters are missing/invalid
+//
+// Possible errors:
+//   - INVALID_AUTHORIZATION_HEADER: If authorization header format is incorrect
+//   - INVALID_ALGORITHM: If algorithm is not HMAC-SHA256
+//   - INVALID_ACCESS_KEY_ID: If access key is missing
+//   - SIGNATURE_MISSING: If signature is not provided
+//   - INVALID_SIGNED_HEADERS: If required headers are missing
+//   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
+func VerifySignature(authorizationHeader, signedHeader, payload string, accessSecretProvider AccessSecretProvider) (bool, error) {
+	tokens := splitKeyValue(authorizationHeader, "/", "=")
+	if len(tokens) < 3 {
+		return false, errors.New("INVALID_AUTHORIZATION_HEADER")
+	}
+	algorithm := tokens["alg"]
+	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
+		return false, errors.New("INVALID_ALGORITHM")
+	}
 	credentials := splitKeyValue(tokens["creds"], "\n", ":")
 	accessKeyId := credentials["access-key"]
+	if accessKeyId == "" {
+		return false, errors.New("INVALID_ACCESS_KEY_ID")
+	}
 	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	headers := splitKeyValue(securityHeader, "/", "=")
-	providedSignature := tokens["signature"]
-	computedSignature := ComputeSignature(accessSecret, payload, headers)
-	if computedSignature != providedSignature {
-		return errors.New("SIGNATURE_MISMATCH")
+	providedSignature := tokens["sign"]
+	if providedSignature == "" {
+		return false, errors.New("SIGNATURE_MISSING")
 	}
-	return nil
+	singedHeaders := splitKeyValue(signedHeader, "/", "=")
+	if len(singedHeaders) < 5 {
+		return false, errors.New("INVALID_SIGNED_HEADERS")
+	}
+	computedSignature := ComputeSignature(accessSecret, payload, singedHeaders)
+	if strings.EqualFold(computedSignature, providedSignature) {
+		return false, errors.New("SIGNATURE_MISMATCH")
+	}
+	return true, nil
 }
 
 // splitKeyValue splits a string into key-value pairs using the provided separators.
