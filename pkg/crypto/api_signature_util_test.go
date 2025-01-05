@@ -98,9 +98,9 @@ func TestComputeSignature(t *testing.T) {
 			payloadHash := hex.EncodeToString(hasher.Sum(nil))
 
 			// Now compute signature using the hash
-			signature, err := ComputeSignature(tt.accessSecret, payloadHash, tt.headers)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ComputeSignature() error = %v, wantErr %v", err, tt.wantErr)
+			signature := ComputeSignature(tt.accessSecret, payloadHash, tt.headers)
+			if signature == "" {
+				t.Errorf("ComputeSignature() error = %v, wantErr %v", signature, tt.wantErr)
 				return
 			}
 
@@ -180,9 +180,9 @@ func TestVerifySignature(t *testing.T) {
 			// For valid signature test, compute and append the actual signature
 			if tt.expectedValid {
 				headers := splitKeyValue(tt.signedHeader, "/", "=")
-				signature, err := ComputeSignature(mockProvider.secrets["test-key-id"], tt.payload, headers)
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
+				signature := ComputeSignature(mockProvider.secrets["test-key-id"], tt.payload, headers)
+				if signature == "" {
+					t.Errorf("Unexpected error: %v", signature)
 				}
 				tt.authHeader = tt.authHeader + signature
 			}
