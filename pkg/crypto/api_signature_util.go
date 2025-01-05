@@ -141,29 +141,25 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
 func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretProvider AccessSecretProvider) (bool, error) {
-	tokens := splitKeyValue(authorizationHeaderValue, "/", "=")
-	if len(tokens) < 3 {
-		return false, errors.New("INVALID_AUTHORIZATION_HEADER")
+	algorithm, credentials, signedHeaders, providedSignature, err := ParseAuthorizationHeader(authorizationHeaderValue)
+	if err != nil {
+		return false, err
 	}
-	algorithm := tokens["alg"]
 	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
 		return false, errors.New("INVALID_ALGORITHM")
 	}
-	credentials := splitKeyValue(tokens["creds"], "\n", ":")
-	accessKeyId := credentials["access-key"]
-	if accessKeyId == "" {
+	if credentials == "" {
 		return false, errors.New("INVALID_ACCESS_KEY_ID")
 	}
-	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
+	accessSecret, err := accessSecretProvider.GetAccessSecret(credentials)
 	if err != nil {
 		return false, err
 	}
 
-	providedSignature := tokens["sign"]
 	if providedSignature == "" {
 		return false, errors.New("SIGNATURE_MISSING")
 	}
-	singedHeaders := splitKeyValue(signedHeader, "/", "=")
+	singedHeaders := splitKeyValue(signedHeaders, "/", "=")
 	if len(singedHeaders) < 5 {
 		return false, errors.New("INVALID_SIGNED_HEADERS")
 	}
@@ -213,11 +209,6 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 	parts.WriteString(signature)
 	parts.WriteString(signingSignature)
 	return parts.String()
-}
-
-func parseAuthorizationHeader(authorizationHeaderValue string) (string, string, string, string, string, string) {
-	tokens := splitKeyValue(authorizationHeaderValue, "/", "=")
-	return tokens["alg"], tokens["creds"], tokens["signed-headers"], tokens["sign"]
 }
 
 // SignPayload generates a signature and required headers for API request authentication.
@@ -280,7 +271,12 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId stri
 // Format: "alg=HMAC-SHA256,creds=access-key,signed-headers=header1=value1/header2=value2/,sign=signature"
 // Sample header value
 // alg=HMAC-SHA256,creds=test-key-id,signed-headers=chnl=web/usrid=test-user/ts=2025-01-05T21:00:02+05:30/api=test-api/ver=v1/,sign=5b15ecf0a5a6cc14c12651f628a9bbc8958dcd8edc9bbe8e9970481bb72668af
-
+// Returns:
+//   - algorithm: The algorithm used for signature computation
+//   - credentials: The access key ID
+//   - signedHeaders: The headers used in signature computation
+//   - signature: The computed signature
+//   - err: Error if parsing fails
 func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, credentials, signedHeaders, signature string, err error) {
 	// Split by comma to separate main components
 	parts := splitKeyValue(authorizationHeaderValue, ",", "=")

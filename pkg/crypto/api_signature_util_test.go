@@ -117,11 +117,10 @@ func TestComputeSignature(t *testing.T) {
 
 				// Verify the signature can be used in verification
 				authHeader := "alg=HMAC-SHA256/creds=access-key:test-key-id/sign=" + signature
-				signedHeader := formatSignedHeader(tt.headers)
 				mockProvider := NewMockAccessSecretProvider()
 				mockProvider.secrets["test-key-id"] = tt.accessSecret
 
-				valid, err := VerifySignature(authHeader, signedHeader, payloadHash, mockProvider)
+				valid, err := VerifySignature(authHeader, payloadHash, mockProvider)
 				if !valid || err != nil {
 					t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
 				}
@@ -136,15 +135,13 @@ func TestVerifySignature(t *testing.T) {
 	tests := []struct {
 		name          string
 		authHeader    string
-		signedHeader  string
 		payload       string
 		expectedValid bool
 		expectedError string
 	}{
 		{
 			name:          "Valid signature verification",
-			authHeader:    "alg=HMAC-SHA256/creds=access-key:test-key-id/sign=",
-			signedHeader:  "ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/chnl=web/usrid=test-user",
+			authHeader:    "alg=HMAC-SHA256,creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/chnl=web/usrid=test-user/,sign=",
 			payload:       `{"test":"data"}`,
 			expectedValid: true,
 			expectedError: "",
@@ -152,42 +149,40 @@ func TestVerifySignature(t *testing.T) {
 		{
 			name:          "Invalid authorization header",
 			authHeader:    "invalid-header",
-			signedHeader:  "ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/chnl=web/usrid=test-user",
 			payload:       `{"test":"data"}`,
 			expectedValid: false,
 			expectedError: "INVALID_AUTHORIZATION_HEADER",
 		},
 		{
 			name:          "Invalid algorithm",
-			authHeader:    "alg=MD5/creds=access-key:test-key-id/sign=test-signature",
-			signedHeader:  "ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/chnl=web/usrid=test-user",
+			authHeader:    "alg=MD5,creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z/,sign=test-signature",
 			payload:       `{"test":"data"}`,
 			expectedValid: false,
 			expectedError: "INVALID_ALGORITHM",
 		},
 		{
 			name:          "Missing signature",
-			authHeader:    "alg=HMAC-SHA256/creds=access-key:test-key-id",
-			signedHeader:  "ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/chnl=web/usrid=test-user",
+			authHeader:    "alg=HMAC-SHA256,creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z/",
 			payload:       `{"test":"data"}`,
 			expectedValid: false,
 			expectedError: "INVALID_AUTHORIZATION_HEADER",
+		},
+		{
+			name:          "Invalid signed headers",
+			authHeader:    "alg=HMAC-SHA256,creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z,sign=test-signature",
+			payload:       `{"test":"data"}`,
+			expectedValid: false,
+			expectedError: "INVALID_SIGNED_HEADERS",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// For valid signature test, compute and append the actual signature
-			if tt.expectedValid {
-				headers := splitKeyValue(tt.signedHeader, "/", "=")
-				signature := ComputeSignature(mockProvider.secrets["test-key-id"], tt.payload, headers)
-				if signature == "" {
-					t.Errorf("Unexpected error: %v", signature)
-				}
-				tt.authHeader = tt.authHeader + signature
-			}
+			// Compute payload hash
+			payloadHash := hex.EncodeToString(sha256Hash(tt.payload))
 
-			valid, err := VerifySignature(tt.authHeader, tt.signedHeader, tt.payload, mockProvider)
+			// Pass payloadHash instead of raw payload
+			valid, err := VerifySignature(tt.authHeader, payloadHash, mockProvider)
 
 			// Check error
 			if tt.expectedError != "" {
@@ -233,11 +228,23 @@ func TestSignPayload(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "Invalid key ID",
-			api:      "test-api",
+			name:     "Missing required headers",
+			api:      "",
 			ver:      "v1",
 			chnl:     "web",
 			usrid:    "test-user",
+			payload:  `{"test":"data"}`,
+			keyID:    "test-key-id",
+			provider: mockProvider,
+			wantErr:  true,
+		},
+		{
+			name:  "Invalid key ID",
+			api:   "test-api",
+			ver:   "v1",
+			chnl:  "web",
+			usrid: "test-user",
+
 			payload:  `{"test":"data"}`,
 			keyID:    "invalid-key",
 			provider: mockProvider,
@@ -247,6 +254,7 @@ func TestSignPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
 			signature, authHeader, signedHeader, err := SignPayload(tt.api, tt.ver, tt.chnl, tt.usrid, tt.payload, tt.keyID, tt.provider)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SignPayload() error = %v, wantErr %v", err, tt.wantErr)
@@ -257,12 +265,74 @@ func TestSignPayload(t *testing.T) {
 				if signature == "" || authHeader == "" || signedHeader == "" {
 					t.Errorf("Expected non-empty signature, authHeader, and signedHeader")
 				}
-
+				payloadHash := hex.EncodeToString(sha256Hash(tt.payload))
 				// Verify the generated signature
-				valid, err := VerifySignature(authHeader, signedHeader, tt.payload, tt.provider)
+				valid, err := VerifySignature(authHeader, payloadHash, mockProvider)
 				if !valid || err != nil {
 					t.Errorf("Generated signature verification failed: valid=%v, err=%v", valid, err)
 				}
+			}
+		})
+	}
+}
+
+func TestParseAuthorizationHeader(t *testing.T) {
+	tests := []struct {
+		name          string
+		authHeader    string
+		wantAlg       string
+		wantCreds     string
+		wantHeaders   string
+		wantSignature string
+		expectedError string
+	}{
+		{
+			name:          "Valid header",
+			authHeader:    "alg=HMAC-SHA256,creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/,sign=test-signature",
+			wantAlg:       "HMAC-SHA256",
+			wantCreds:     "test-key-id",
+			wantHeaders:   "ts=2024-03-14T12:00:00Z/api=test-api/ver=v1/",
+			wantSignature: "test-signature",
+			expectedError: "",
+		},
+		{
+			name:          "Missing algorithm",
+			authHeader:    "creds=test-key-id,signed-headers=ts=2024-03-14T12:00:00Z/,sign=test-signature",
+			expectedError: "INVALID_AUTHORIZATION_HEADER",
+		},
+		{
+			name:          "Missing credentials",
+			authHeader:    "alg=HMAC-SHA256,signed-headers=ts=2024-03-14T12:00:00Z/,sign=test-signature",
+			expectedError: "INVALID_AUTHORIZATION_HEADER",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			alg, creds, headers, signature, err := ParseAuthorizationHeader(tt.authHeader)
+
+			if tt.expectedError != "" {
+				if err == nil || err.Error() != tt.expectedError {
+					t.Errorf("Expected error %v, got %v", tt.expectedError, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+
+			if alg != tt.wantAlg {
+				t.Errorf("Expected algorithm %v, got %v", tt.wantAlg, alg)
+			}
+			if creds != tt.wantCreds {
+				t.Errorf("Expected credentials %v, got %v", tt.wantCreds, creds)
+			}
+			if headers != tt.wantHeaders {
+				t.Errorf("Expected headers %v, got %v", tt.wantHeaders, headers)
+			}
+			if signature != tt.wantSignature {
+				t.Errorf("Expected signature %v, got %v", tt.wantSignature, signature)
 			}
 		})
 	}
