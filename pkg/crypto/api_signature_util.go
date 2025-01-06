@@ -152,39 +152,26 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 // with a computed signature using the request payload and headers.
 //
 // Parameters:
-//   - authorizationHeader: The authorization header containing algorithm, credentials, and signature
-//     Format: "alg=HMAC-SHA256/creds=access-key:value/sign=signature"
-//     Format: "ts=timestamp/api=apiName/ver=version/chnl=channel/usrid=userId"
+//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
 //   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
+//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
+//   - providedSignature: The provided signature to be verified, in hexadecimal format
 //   - accessSecret: The access secret key for signature computation and validation
 //
+// Use ParseAuthorizationHeader to extract the values and pass it here.
 // Returns:
 //   - bool: true if signature is valid, false otherwise
 //   - error: Error if validation fails or if required parameters are missing/invalid
 //
 // Possible errors:
-//   - INVALID_AUTHORIZATION_HEADER: If authorization header format is incorrect
-//   - INVALID_ALGORITHM: If algorithm is not HMAC-SHA256
-//   - INVALID_ACCESS_KEY_ID: If access key is missing
 //   - SIGNATURE_MISSING: If signature is not provided
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
-func VerifySignature(authorizationHeaderValue, payloadHash, accessSecret string) (bool, error) {
-	algorithm, credentials, signedHeaders, providedSignature, err := ParseAuthorizationHeader(authorizationHeaderValue)
-	if err != nil {
-		return false, err
-	}
-	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
-		return false, errors.New("INVALID_ALGORITHM")
-	}
-	if credentials == "" {
-		return false, errors.New("INVALID_ACCESS_KEY_ID")
-	}
-
+func VerifySignature(signedHeadersValue, payloadHash, providedSignature, accessSecret string) (bool, error) {
 	if providedSignature == "" {
 		return false, errors.New("SIGNATURE_MISSING")
 	}
-	singedHeaders := splitKeyValue(signedHeaders, "/", "=")
+	singedHeaders := splitKeyValue(signedHeadersValue, "/", "=")
 	if len(singedHeaders) < 5 {
 		return false, errors.New("INVALID_SIGNED_HEADERS")
 	}
@@ -315,6 +302,10 @@ func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, crede
 	// Validate all required fields are present
 	if algorithm == "" || credentials == "" || signedHeaders == "" || signature == "" {
 		return "", "", "", "", errors.New("INVALID_AUTHORIZATION_HEADER")
+	}
+
+	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
+		return "", "", "", "", errors.New("INVALID_ALGORITHM")
 	}
 
 	return algorithm, credentials, signedHeaders, signature, nil
