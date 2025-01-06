@@ -213,7 +213,7 @@ func TestSignPayload(t *testing.T) {
 		usrid    string
 		payload  string
 		keyID    string
-		provider AccessSecretProvider
+		provider AccessSecretProvider[string]
 		wantErr  bool
 	}{
 		{

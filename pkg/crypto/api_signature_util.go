@@ -18,40 +18,69 @@ const SIGNED_HEADERS_KEY = "x-kplex-si"
 const SIGNATURE_KEY = "sign"
 
 // AccessSecretProvider is an interface for retrieving access secrets.
-// Implementations of this interface should provide a method to get an access secret
-// given an access key ID.
-type AccessSecretProvider interface {
-	GetAccessSecret(accessKeyId string) (string, error)
+// T represents the type of the secret being returned
+type AccessSecretProvider[T any] interface {
+	GetAccessSecret(accessKeyId string) (T, error)
+}
+
+type APIAccessKey struct {
+	KeyID           string         `db:"key_id" json:"keyId"`
+	Secret          string         `db:"secret" json:"secret"`
+	InstitutionID   string         `db:"institution_id" json:"institutionId"`
+	ApplicationName string         `db:"application_name" json:"applicationName"`
+	Enabled         string         `db:"enabled" json:"enabled"`
+	TestEnabled     string         `db:"test_enabled" json:"testEnabled"`
+	Version         int16          `db:"version" json:"version"`
+	ActiveFrom      time.Time      `db:"active_from" json:"activeFrom"`
+	ActiveUntil     *time.Time     `db:"active_until" json:"activeUntil,omitempty"`
+	CreatedAt       time.Time      `db:"created_at" json:"createdAt"`
+	UpdatedAt       *time.Time     `db:"updated_at" json:"updatedAt,omitempty"`
+	DiscardedAt     gorm.DeletedAt `db:"discarded_at" json:"discardedAt,omitempty"`
+}
+
+func (a *APIAccessKey) TableName() string {
+	return "api_access_keys"
+}
+
+func (a *APIAccessKey) BeforeCreate(tx *gorm.DB) error {
+	a.CreatedAt = time.Now()
+	return nil
+}
+
+func (a *APIAccessKey) BeforeUpdate(tx *gorm.DB) error {
+	now := time.Now()
+	a.UpdatedAt = &now
+	return nil
 }
 
 type DbAccessSecretProvider struct {
 	db         *gorm.DB
-	accessKeys map[string]string
+	accessKeys map[string]*APIAccessKey
 }
 
 func NewDbAccessSecretProvider(db *gorm.DB) *DbAccessSecretProvider {
-	return &DbAccessSecretProvider{db: db, accessKeys: make(map[string]string)}
+	return &DbAccessSecretProvider{db: db}
 }
 
-// GetAccessSecret retrieves the access secret for a given access key ID.
-// It first checks the in-memory cache, and if not found, queries the database.
-// The retrieved secret is then cached for future use.
-func (p *DbAccessSecretProvider) GetAccessSecret(accessKeyId string) (string, error) {
-	if secret, ok := p.accessKeys[accessKeyId]; ok {
-		return secret, nil
-	}
-
-	var accessSecret string
-	err := p.db.Table("api_access_keys").Where("key_id = ?", accessKeyId).Pluck("secret", &accessSecret).Error
+func (r *DbAccessSecretProvider) GetAccessSecret(keyID string) (*APIAccessKey, error) {
+	var accessKey APIAccessKey
+	err := r.db.Where("key_id = ?", keyID).Find(&accessKey).Error
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	return &accessKey, nil
+}
 
-	if accessSecret != "" {
-		p.accessKeys[accessKeyId] = accessSecret
-	}
+func (r *DbAccessSecretProvider) CreateAccessKey(accessKey *APIAccessKey) error {
+	return r.db.Create(accessKey).Error
+}
 
-	return accessSecret, nil
+func (r *DbAccessSecretProvider) UpdateAccessKey(accessKey *APIAccessKey) error {
+	return r.db.Save(accessKey).Error
+}
+
+func (r *DbAccessSecretProvider) DeleteAccessKey(keyID string) error {
+	return r.db.Delete(&APIAccessKey{}, "key_id = ?", keyID).Error
 }
 
 // HmacSha256 computes the HMAC-SHA256 of the given data using the provided key.
@@ -140,7 +169,7 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 //   - SIGNATURE_MISSING: If signature is not provided
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
-func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretProvider AccessSecretProvider) (bool, error) {
+func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretProvider AccessSecretProvider[string]) (bool, error) {
 	algorithm, credentials, signedHeaders, providedSignature, err := ParseAuthorizationHeader(authorizationHeaderValue)
 	if err != nil {
 		return false, err
@@ -238,7 +267,7 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 // Possible errors:
 //   - MISSING_REQUIRED_HEADERS: If any required header is empty
 //   - INVALID_ACCESS_SECRET: If access secret cannot be retrieved
-func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId string, accessSecretProvider AccessSecretProvider) (signature, authHeader, signedHeader string, err error) {
+func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId string, accessSecretProvider AccessSecretProvider[string]) (signature, authHeader, signedHeader string, err error) {
 	timestamp := time.Now().Format(time.RFC3339)
 	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
 	if err != nil {
