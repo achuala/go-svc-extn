@@ -156,7 +156,7 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 //     Format: "alg=HMAC-SHA256/creds=access-key:value/sign=signature"
 //     Format: "ts=timestamp/api=apiName/ver=version/chnl=channel/usrid=userId"
 //   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
-//   - accessSecretProvider: Interface to retrieve access secrets for signature computation
+//   - accessSecret: The access secret key for signature computation and validation
 //
 // Returns:
 //   - bool: true if signature is valid, false otherwise
@@ -169,7 +169,7 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 //   - SIGNATURE_MISSING: If signature is not provided
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
-func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretProvider AccessSecretProvider[string]) (bool, error) {
+func VerifySignature(authorizationHeaderValue, payloadHash, accessSecret string) (bool, error) {
 	algorithm, credentials, signedHeaders, providedSignature, err := ParseAuthorizationHeader(authorizationHeaderValue)
 	if err != nil {
 		return false, err
@@ -179,10 +179,6 @@ func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretP
 	}
 	if credentials == "" {
 		return false, errors.New("INVALID_ACCESS_KEY_ID")
-	}
-	accessSecret, err := accessSecretProvider.GetAccessSecret(credentials)
-	if err != nil {
-		return false, err
 	}
 
 	if providedSignature == "" {

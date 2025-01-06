@@ -120,7 +120,7 @@ func TestComputeSignature(t *testing.T) {
 				mockProvider := NewMockAccessSecretProvider()
 				mockProvider.secrets["test-key-id"] = tt.accessSecret
 
-				valid, err := VerifySignature(authHeader, payloadHash, mockProvider)
+				valid, err := VerifySignature(authHeader, payloadHash, tt.accessSecret)
 				if !valid || err != nil {
 					t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
 				}
@@ -131,7 +131,7 @@ func TestComputeSignature(t *testing.T) {
 
 func TestVerifySignature(t *testing.T) {
 	mockProvider := NewMockAccessSecretProvider()
-
+	mockProvider.secrets["test-key-id"] = "test-secret-key"
 	tests := []struct {
 		name          string
 		authHeader    string
@@ -182,7 +182,7 @@ func TestVerifySignature(t *testing.T) {
 			payloadHash := hex.EncodeToString(sha256Hash(tt.payload))
 
 			// Pass payloadHash instead of raw payload
-			valid, err := VerifySignature(tt.authHeader, payloadHash, mockProvider)
+			valid, err := VerifySignature(tt.authHeader, payloadHash, mockProvider.secrets["test-key-id"])
 
 			// Check error
 			if tt.expectedError != "" {
@@ -267,7 +267,7 @@ func TestSignPayload(t *testing.T) {
 				}
 				payloadHash := hex.EncodeToString(sha256Hash(tt.payload))
 				// Verify the generated signature
-				valid, err := VerifySignature(authHeader, payloadHash, mockProvider)
+				valid, err := VerifySignature(authHeader, payloadHash, mockProvider.secrets["test-key-id"])
 				if !valid || err != nil {
 					t.Errorf("Generated signature verification failed: valid=%v, err=%v", valid, err)
 				}
