@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"time"
 
@@ -16,6 +15,24 @@ const TERMINATOR = "@@"
 const CREDENTIAL_KEY = "creds"
 const SIGNED_HEADERS_KEY = "x-kplex-si"
 const SIGNATURE_KEY = "sign"
+
+// Define custom error types
+type SignatureError string
+
+func (e SignatureError) Error() string {
+	return string(e)
+}
+
+const (
+	ErrMissingRequiredHeaders SignatureError = "MISSING_REQUIRED_HEADERS"
+	ErrInvalidAlgorithm       SignatureError = "INVALID_ALGORITHM"
+	ErrInvalidAccessKeyID     SignatureError = "INVALID_ACCESS_KEY_ID"
+	ErrSignatureMissing       SignatureError = "SIGNATURE_MISSING"
+	ErrInvalidSignedHeaders   SignatureError = "INVALID_SIGNED_HEADERS"
+	ErrSignatureMismatch      SignatureError = "SIGNATURE_MISMATCH"
+	ErrInvalidAccessSecret    SignatureError = "INVALID_ACCESS_SECRET"
+	ErrInvalidAuthHeader      SignatureError = "INVALID_AUTHORIZATION_HEADER"
+)
 
 // AccessSecretProvider is an interface for retrieving access secrets.
 // Implementations of this interface should provide a method to get an access secret
@@ -146,10 +163,10 @@ func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretP
 		return false, err
 	}
 	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
-		return false, errors.New("INVALID_ALGORITHM")
+		return false, ErrInvalidAlgorithm
 	}
 	if credentials == "" {
-		return false, errors.New("INVALID_ACCESS_KEY_ID")
+		return false, ErrInvalidAccessKeyID
 	}
 	accessSecret, err := accessSecretProvider.GetAccessSecret(credentials)
 	if err != nil {
@@ -157,15 +174,15 @@ func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretP
 	}
 
 	if providedSignature == "" {
-		return false, errors.New("SIGNATURE_MISSING")
+		return false, ErrSignatureMissing
 	}
 	singedHeaders := splitKeyValue(signedHeaders, "/", "=")
 	if len(singedHeaders) < 5 {
-		return false, errors.New("INVALID_SIGNED_HEADERS")
+		return false, ErrInvalidSignedHeaders
 	}
 	computedSignature := ComputeSignature(accessSecret, payloadHash, singedHeaders)
 	if !strings.EqualFold(computedSignature, providedSignature) {
-		return false, errors.New("SIGNATURE_MISMATCH")
+		return false, ErrSignatureMismatch
 	}
 	return true, nil
 }
@@ -245,10 +262,10 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId stri
 		return "", "", "", err
 	}
 	if apiName == "" || apiVersion == "" || channel == "" || userId == "" {
-		return "", "", "", errors.New("MISSING_REQUIRED_HEADERS")
+		return "", "", "", ErrMissingRequiredHeaders
 	}
 	if accessSecret == "" {
-		return "", "", "", errors.New("INVALID_ACCESS_SECRET")
+		return "", "", "", ErrInvalidAccessSecret
 	}
 	headers := map[string]string{
 		"ts":    timestamp,
@@ -289,7 +306,7 @@ func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, crede
 
 	// Validate all required fields are present
 	if algorithm == "" || credentials == "" || signedHeaders == "" || signature == "" {
-		return "", "", "", "", errors.New("INVALID_AUTHORIZATION_HEADER")
+		return "", "", "", "", ErrInvalidAuthHeader
 	}
 
 	return algorithm, credentials, signedHeaders, signature, nil
