@@ -3,8 +3,8 @@ module github.com/achuala/go-svc-extn
 go 1.23.4
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.1-20241127180247-a33202765966.1
-	github.com/ThreeDotsLabs/watermill v1.4.1
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.2-20241127180247-a33202765966.1
+	github.com/ThreeDotsLabs/watermill v1.4.3
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.2
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/bufbuild/protovalidate-go v0.8.2
@@ -22,10 +22,10 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.10.0
 	github.com/tink-crypto/tink-go/v2 v2.2.0
-	github.com/valkey-io/valkey-go v1.0.52
+	github.com/valkey-io/valkey-go v1.0.53
 	go.opentelemetry.io/contrib/propagators/b3 v1.33.0
-	golang.org/x/crypto v0.31.0
-	google.golang.org/protobuf v1.36.1
+	golang.org/x/crypto v0.32.0
+	google.golang.org/protobuf v1.36.2
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12
 	gorm.io/plugin/opentelemetry v0.1.11
@@ -70,13 +70,13 @@ require (
 	go.opentelemetry.io/otel/trace v1.33.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/exp v0.0.0-20250103183323-7d7fa50e5329 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
+	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250102185135-69823020774d // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250102185135-69823020774d // indirect
-	google.golang.org/grpc v1.69.2 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250106144421-5f5ef82da422 // indirect
+	google.golang.org/grpc v1.69.4 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
