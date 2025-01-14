@@ -1,10 +1,14 @@
 package crypto
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -35,40 +39,84 @@ const (
 )
 
 // AccessSecretProvider is an interface for retrieving access secrets.
-// Implementations of this interface should provide a method to get an access secret
-// given an access key ID.
-type AccessSecretProvider interface {
-	GetAccessSecret(accessKeyId string) (string, error)
+// T represents the type of the secret being returned
+type AccessSecretProvider[T any] interface {
+	GetAccessSecret(accessKeyId string) (T, error)
+}
+
+type APIAccessKey struct {
+	KeyID           string         `db:"key_id" json:"keyId"`
+	Secret          string         `db:"secret" json:"secret"`
+	InstitutionID   string         `db:"institution_id" json:"institutionId"`
+	ApplicationName string         `db:"application_name" json:"applicationName"`
+	Enabled         string         `db:"enabled" json:"enabled"`
+	TestEnabled     string         `db:"test_enabled" json:"testEnabled"`
+	Version         int16          `db:"version" json:"version"`
+	ActiveFrom      time.Time      `db:"active_from" json:"activeFrom"`
+	ActiveUntil     *time.Time     `db:"active_until" json:"activeUntil,omitempty"`
+	CreatedAt       time.Time      `db:"created_at" json:"createdAt"`
+	UpdatedAt       *time.Time     `db:"updated_at" json:"updatedAt,omitempty"`
+	DiscardedAt     gorm.DeletedAt `db:"discarded_at" json:"discardedAt,omitempty"`
+}
+
+func (a *APIAccessKey) TableName() string {
+	return "api_access_keys"
+}
+
+func (a *APIAccessKey) BeforeCreate(tx *gorm.DB) error {
+	a.CreatedAt = time.Now()
+	return nil
+}
+
+func (a *APIAccessKey) BeforeUpdate(tx *gorm.DB) error {
+	now := time.Now()
+	a.UpdatedAt = &now
+	return nil
 }
 
 type DbAccessSecretProvider struct {
 	db         *gorm.DB
-	accessKeys map[string]string
+	accessKeys sync.Map
 }
 
 func NewDbAccessSecretProvider(db *gorm.DB) *DbAccessSecretProvider {
-	return &DbAccessSecretProvider{db: db, accessKeys: make(map[string]string)}
+	return &DbAccessSecretProvider{db: db}
 }
 
-// GetAccessSecret retrieves the access secret for a given access key ID.
-// It first checks the in-memory cache, and if not found, queries the database.
-// The retrieved secret is then cached for future use.
-func (p *DbAccessSecretProvider) GetAccessSecret(accessKeyId string) (string, error) {
-	if secret, ok := p.accessKeys[accessKeyId]; ok {
-		return secret, nil
+func (r *DbAccessSecretProvider) GetAccessSecret(ctx context.Context, keyID string) (*APIAccessKey, error) {
+	// Check cache first
+	if cached, ok := r.accessKeys.Load(keyID); ok {
+		return cached.(*APIAccessKey), nil
 	}
 
-	var accessSecret string
-	err := p.db.Table("api_access_keys").Where("key_id = ?", accessKeyId).Pluck("secret", &accessSecret).Error
-	if err != nil {
-		return "", err
+	var accessKey APIAccessKey
+	if keyID == "" {
+		return nil, errors.New("EMPTY_KEY_ID")
 	}
 
-	if accessSecret != "" {
-		p.accessKeys[accessKeyId] = accessSecret
+	result := r.db.Where("key_id = ?", keyID).Find(&accessKey)
+	if result.Error != nil {
+		return nil, fmt.Errorf("database error: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, errors.New("ACCESS_KEY_NOT_FOUND")
 	}
 
-	return accessSecret, nil
+	// Store in cache
+	r.accessKeys.Store(keyID, &accessKey)
+	return &accessKey, nil
+}
+
+func (r *DbAccessSecretProvider) CreateAccessKey(accessKey *APIAccessKey) error {
+	return r.db.Create(accessKey).Error
+}
+
+func (r *DbAccessSecretProvider) UpdateAccessKey(accessKey *APIAccessKey) error {
+	return r.db.Save(accessKey).Error
+}
+
+func (r *DbAccessSecretProvider) DeleteAccessKey(keyID string) error {
+	return r.db.Delete(&APIAccessKey{}, "key_id = ?", keyID).Error
 }
 
 // HmacSha256 computes the HMAC-SHA256 of the given data using the provided key.
@@ -120,7 +168,14 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 //  1. Generate a signing key using the secret key and header information
 //  2. Combine channel, userId, and payload hash
 //  3. Create final signature using algorithm, timestamp, and request hash
-func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]string) string {
+func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]string) (string, error) {
+	requiredHeaders := []string{"ts", "api", "ver", "chnl", "usrid"}
+	for _, h := range requiredHeaders {
+		if _, ok := headers[h]; !ok {
+			return "", ErrMissingRequiredHeaders
+		}
+	}
+
 	timestamp := headers["ts"]
 	apiName := headers["api"]
 	apiVersion := headers["ver"]
@@ -133,54 +188,40 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 
 	stringToSign := ALGORITHM_KEY + timestamp + hex.EncodeToString(sha256Hash(request))
 
-	return hex.EncodeToString(hmacSha256(stringToSign, signingKey))
+	return hex.EncodeToString(hmacSha256(stringToSign, signingKey)), nil
 }
 
 // VerifySignature validates the authenticity of a request by comparing the provided signature
 // with a computed signature using the request payload and headers.
 //
 // Parameters:
-//   - authorizationHeader: The authorization header containing algorithm, credentials, and signature
-//     Format: "alg=HMAC-SHA256/creds=access-key:value/sign=signature"
-//     Format: "ts=timestamp/api=apiName/ver=version/chnl=channel/usrid=userId"
+//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
 //   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
-//   - accessSecretProvider: Interface to retrieve access secrets for signature computation
+//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
+//   - providedSignature: The provided signature to be verified, in hexadecimal format
+//   - accessSecret: The access secret key for signature computation and validation
 //
+// Use ParseAuthorizationHeader to extract the values and pass it here.
 // Returns:
 //   - bool: true if signature is valid, false otherwise
 //   - error: Error if validation fails or if required parameters are missing/invalid
 //
 // Possible errors:
-//   - INVALID_AUTHORIZATION_HEADER: If authorization header format is incorrect
-//   - INVALID_ALGORITHM: If algorithm is not HMAC-SHA256
-//   - INVALID_ACCESS_KEY_ID: If access key is missing
 //   - SIGNATURE_MISSING: If signature is not provided
 //   - INVALID_SIGNED_HEADERS: If required headers are missing
 //   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
-func VerifySignature(authorizationHeaderValue, payloadHash string, accessSecretProvider AccessSecretProvider) (bool, error) {
-	algorithm, credentials, signedHeaders, providedSignature, err := ParseAuthorizationHeader(authorizationHeaderValue)
-	if err != nil {
-		return false, err
-	}
-	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
-		return false, ErrInvalidAlgorithm
-	}
-	if credentials == "" {
-		return false, ErrInvalidAccessKeyID
-	}
-	accessSecret, err := accessSecretProvider.GetAccessSecret(credentials)
-	if err != nil {
-		return false, err
-	}
-
+func VerifySignature(signedHeadersValue, payloadHash, providedSignature, accessSecret string) (bool, error) {
 	if providedSignature == "" {
 		return false, ErrSignatureMissing
 	}
-	singedHeaders := splitKeyValue(signedHeaders, "/", "=")
+	singedHeaders := splitKeyValue(signedHeadersValue, "/", "=")
 	if len(singedHeaders) < 5 {
 		return false, ErrInvalidSignedHeaders
 	}
-	computedSignature := ComputeSignature(accessSecret, payloadHash, singedHeaders)
+	computedSignature, err := ComputeSignature(accessSecret, payloadHash, singedHeaders)
+	if err != nil {
+		return false, err
+	}
 	if !strings.EqualFold(computedSignature, providedSignature) {
 		return false, ErrSignatureMismatch
 	}
@@ -237,7 +278,7 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 //   - userId: User ID making the request
 //   - payload: Request body or payload to be signed
 //   - accessKeyId: Access key identifier for authentication
-//   - accessSecretProvider: Interface to retrieve access secrets
+//   - accessSecret: Access secret for signature computation
 //
 // Returns:
 //   - signature: The computed signature for the request
@@ -247,20 +288,15 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 //
 // The function performs the following steps:
 //  1. Generates current timestamp in RFC3339 format
-//  2. Retrieves access secret using the provided accessKeyId
-//  3. Validates required parameters
-//  4. Computes payload hash and signature
-//  5. Builds authorization header with all required components
+//  2. Validates required parameters
+//  3. Computes payload hash and signature
+//  4. Builds authorization header with all required components
 //
 // Possible errors:
 //   - MISSING_REQUIRED_HEADERS: If any required header is empty
 //   - INVALID_ACCESS_SECRET: If access secret cannot be retrieved
-func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId string, accessSecretProvider AccessSecretProvider) (signature, authHeader, signedHeader string, err error) {
+func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, accessSecret string) (signature, authHeader, signedHeader string, err error) {
 	timestamp := time.Now().Format(time.RFC3339)
-	accessSecret, err := accessSecretProvider.GetAccessSecret(accessKeyId)
-	if err != nil {
-		return "", "", "", err
-	}
 	if apiName == "" || apiVersion == "" || channel == "" || userId == "" {
 		return "", "", "", ErrMissingRequiredHeaders
 	}
@@ -274,12 +310,19 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId stri
 		"chnl":  channel,
 		"usrid": userId,
 	}
-	signedHeaders := ""
+	var signedHeadersBuilder strings.Builder
 	for key, value := range headers {
-		signedHeaders += key + "=" + value + "/"
+		signedHeadersBuilder.WriteString(key)
+		signedHeadersBuilder.WriteString("=")
+		signedHeadersBuilder.WriteString(value)
+		signedHeadersBuilder.WriteString("/")
 	}
+	signedHeaders := signedHeadersBuilder.String()
 	payloadHash := hex.EncodeToString(sha256Hash(payload))
-	computedSignature := ComputeSignature(accessSecret, payloadHash, headers)
+	computedSignature, err := ComputeSignature(accessSecret, payloadHash, headers)
+	if err != nil {
+		return "", "", "", err
+	}
 	authHeader = buildAuthorizationHeader(accessKeyId, signedHeaders, computedSignature)
 	return computedSignature, authHeader, signedHeaders, nil
 }
@@ -309,5 +352,30 @@ func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, crede
 		return "", "", "", "", ErrInvalidAuthHeader
 	}
 
+	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
+		return "", "", "", "", ErrInvalidAlgorithm
+	}
+
 	return algorithm, credentials, signedHeaders, signature, nil
+}
+
+// Add constants for error messages
+const (
+	ErrEmptyKeyID        = "EMPTY_KEY_ID"
+	ErrAccessKeyNotFound = "ACCESS_KEY_NOT_FOUND"
+	ErrInvalidSignature  = "SIGNATURE_MISMATCH"
+	ErrMissingHeaders    = "MISSING_REQUIRED_HEADERS"
+	// ... other error constants
+)
+
+// Add validation for time-based operations
+func (a *APIAccessKey) IsValid() bool {
+	now := time.Now()
+	if now.Before(a.ActiveFrom) {
+		return false
+	}
+	if a.ActiveUntil != nil && now.After(*a.ActiveUntil) {
+		return false
+	}
+	return a.Enabled == "Y" // assuming "Y" means enabled
 }
