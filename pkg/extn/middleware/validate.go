@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	validator *protovalidate.Validator
+	validator protovalidate.Validator
 	once      sync.Once
 )
 
