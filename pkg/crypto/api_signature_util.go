@@ -14,11 +14,18 @@ import (
 	"gorm.io/gorm"
 )
 
-const ALGORITHM_KEY = "HMAC-SHA256"
-const TERMINATOR = "@@"
-const CREDENTIAL_KEY = "creds"
-const SIGNED_HEADERS_KEY = "x-kplex-si"
-const SIGNATURE_KEY = "sign"
+const TIMESTAMP_KEY = "timestamp"
+const API_KEY = "api-name"
+const VERSION_KEY = "api-version"
+const CHANNEL_KEY = "channel"
+const USER_ID_KEY = "user-id"
+const ALGORITHM_KEY = "alg"
+const CREDENTIAL_KEY = "access-key"
+const SIGNED_HEADERS_KEY = "signed-headers"
+const SIGNATURE_KEY = "signature"
+
+const TERMINATOR_VALUE = "@@"
+const ALGORITHM_VALUE = "HMAC-SHA256"
 
 // Define custom error types
 type SignatureError string
@@ -144,7 +151,7 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 	kDate := hmacSha256(timeStamp, kSecret)
 	kVersion := hmacSha256(apiVersion, kDate)
 	kApi := hmacSha256(apiName, kVersion)
-	return hmacSha256(TERMINATOR, kApi)
+	return hmacSha256(TERMINATOR_VALUE, kApi)
 }
 
 // ComputeSignature generates a cryptographic signature for API request validation.
@@ -155,11 +162,11 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 //   - accessSecretKey: The secret key used for signature generation
 //   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
 //   - headers: A map containing required headers:
-//   - "ts": Timestamp
-//   - "api": API name
-//   - "ver": API version
-//   - "chnl": Channel identifier
-//   - "usrid": User ID
+//   - "timestamp": Timestamp
+//   - "api-name": API name
+//   - "api-version": API version
+//   - "channel": Channel identifier
+//   - "user-id": User ID
 //
 // Returns:
 //   - string: The computed signature as a hexadecimal string
@@ -169,24 +176,21 @@ func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []b
 //  2. Combine channel, userId, and payload hash
 //  3. Create final signature using algorithm, timestamp, and request hash
 func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]string) (string, error) {
-	requiredHeaders := []string{"ts", "api", "ver", "chnl", "usrid"}
-	for _, h := range requiredHeaders {
-		if _, ok := headers[h]; !ok {
-			return "", ErrMissingRequiredHeaders
-		}
-	}
+	timestamp := headers[TIMESTAMP_KEY]
+	apiName := headers[API_KEY]
+	apiVersion := headers[VERSION_KEY]
+	channel := headers[CHANNEL_KEY]
+	userId := headers[USER_ID_KEY]
 
-	timestamp := headers["ts"]
-	apiName := headers["api"]
-	apiVersion := headers["ver"]
-	channel := headers["chnl"]
-	userId := headers["usrid"]
+	if timestamp == "" || apiName == "" || apiVersion == "" || channel == "" || userId == "" {
+		return "", ErrMissingRequiredHeaders
+	}
 
 	signingKey := getSignatureKey(accessSecretKey, timestamp, apiName, apiVersion)
 
 	request := channel + userId + payloadHash
 
-	stringToSign := ALGORITHM_KEY + timestamp + hex.EncodeToString(sha256Hash(request))
+	stringToSign := ALGORITHM_VALUE + timestamp + hex.EncodeToString(sha256Hash(request))
 
 	return hex.EncodeToString(hmacSha256(stringToSign, signingKey)), nil
 }
@@ -241,31 +245,38 @@ func splitKeyValue(s, pairSep, kvSep string) map[string]string {
 	return result
 }
 
-func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature string) string {
-	const algorithmKey = "alg="
-	const algorithm = "HMAC-SHA256"
-	const credential = "creds="
-	const signedHeaders = "signed-headers="
-	const signature = "sign="
+// buildSignatureHeader constructs the authorization header string from its components.
+//
+// Parameters:
+//   - credentialStr: The access key ID credential
+//   - signedHeadersStr: A string containing all signed headers in format "header1=value1/header2=value2/"
+//   - computedSignature: The computed signature in hexadecimal format
+//
+// Returns:
+//   - string: A formatted authorization header string in the format:
+//     "alg=HMAC-SHA256,access-key={credentialStr},signed-headers={signedHeadersStr},signature={computedSignature}"
+//
+// The function uses strings.Builder for efficient string concatenation and pre-allocates
+// the required capacity to minimize memory allocations.
+func buildSignatureHeader(credentialStr, signedHeadersStr, computedSignature string) string {
 	const separator = ","
 
 	var parts strings.Builder
-	parts.Grow(len(algorithmKey) + len(algorithm) + len(separator) +
-		len(credential) + len(credentialStr) + len(separator) +
-		len(signedHeaders) + len(signedHeadersStr) + len(separator) +
-		len(signature) + len(signingSignature),
-	)
-	parts.WriteString(algorithmKey)
-	parts.WriteString(algorithm)
+	parts.Grow(len(ALGORITHM_KEY) + len(ALGORITHM_VALUE) + len(separator) +
+		len(CREDENTIAL_KEY) + len(credentialStr) + len(separator) +
+		len(SIGNED_HEADERS_KEY) + len(signedHeadersStr) + len(separator) +
+		len(SIGNATURE_KEY) + len(computedSignature))
+	parts.WriteString(ALGORITHM_KEY)
+	parts.WriteString(ALGORITHM_VALUE)
 	parts.WriteString(separator)
-	parts.WriteString(credential)
+	parts.WriteString(CREDENTIAL_KEY)
 	parts.WriteString(credentialStr)
 	parts.WriteString(separator)
-	parts.WriteString(signedHeaders)
+	parts.WriteString(SIGNED_HEADERS_KEY)
 	parts.WriteString(signedHeadersStr)
 	parts.WriteString(separator)
-	parts.WriteString(signature)
-	parts.WriteString(signingSignature)
+	parts.WriteString(SIGNATURE_KEY)
+	parts.WriteString(computedSignature)
 	return parts.String()
 }
 
@@ -281,9 +292,9 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 //   - accessSecret: Access secret for signature computation
 //
 // Returns:
-//   - signature: The computed signature for the request
-//   - authHeader: Complete authorization header string
-//   - signedHeader: String containing all signed headers
+//   - computedSignature: The computed signature for the request
+//   - signatureHeader: Complete authorization header string
+//   - signedHeaders: String containing all signed headers
 //   - err: Error if signature generation fails
 //
 // The function performs the following steps:
@@ -295,7 +306,7 @@ func buildAuthorizationHeader(credentialStr, signedHeadersStr, signingSignature 
 // Possible errors:
 //   - MISSING_REQUIRED_HEADERS: If any required header is empty
 //   - INVALID_ACCESS_SECRET: If access secret cannot be retrieved
-func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, accessSecret string) (signature, authHeader, signedHeader string, err error) {
+func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, accessSecret string) (computedSignature, signatureHeader, signedHeaders string, err error) {
 	timestamp := time.Now().Format(time.RFC3339)
 	if apiName == "" || apiVersion == "" || channel == "" || userId == "" {
 		return "", "", "", ErrMissingRequiredHeaders
@@ -304,11 +315,11 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, acc
 		return "", "", "", ErrInvalidAccessSecret
 	}
 	headers := map[string]string{
-		"ts":    timestamp,
-		"api":   apiName,
-		"ver":   apiVersion,
-		"chnl":  channel,
-		"usrid": userId,
+		TIMESTAMP_KEY: timestamp,
+		API_KEY:       apiName,
+		VERSION_KEY:   apiVersion,
+		CHANNEL_KEY:   channel,
+		USER_ID_KEY:   userId,
 	}
 	var signedHeadersBuilder strings.Builder
 	for key, value := range headers {
@@ -317,20 +328,20 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, acc
 		signedHeadersBuilder.WriteString(value)
 		signedHeadersBuilder.WriteString("/")
 	}
-	signedHeaders := signedHeadersBuilder.String()
+	signedHeaders = signedHeadersBuilder.String()
 	payloadHash := hex.EncodeToString(sha256Hash(payload))
-	computedSignature, err := ComputeSignature(accessSecret, payloadHash, headers)
+	computedSignature, err = ComputeSignature(accessSecret, payloadHash, headers)
 	if err != nil {
 		return "", "", "", err
 	}
-	authHeader = buildAuthorizationHeader(accessKeyId, signedHeaders, computedSignature)
-	return computedSignature, authHeader, signedHeaders, nil
+	signatureHeader = buildSignatureHeader(accessKeyId, signedHeaders, computedSignature)
+	return computedSignature, signatureHeader, signedHeaders, nil
 }
 
 // ParseAuthorizationHeader parses the authorization header value and returns its components.
-// Format: "alg=HMAC-SHA256,creds=access-key,signed-headers=header1=value1/header2=value2/,sign=signature"
+// Format: "alg=HMAC-SHA256,access-key=access-key-id,signed-headers=header1=value1/header2=value2/,signature=signature"
 // Sample header value
-// alg=HMAC-SHA256,creds=test-key-id,signed-headers=chnl=web/usrid=test-user/ts=2025-01-05T21:00:02+05:30/api=test-api/ver=v1/,sign=5b15ecf0a5a6cc14c12651f628a9bbc8958dcd8edc9bbe8e9970481bb72668af
+// alg=HMAC-SHA256,access-key=test-key-id,signed-headers=channel=web/user-id=test-user/timestamp=2025-01-05T21:00:02+05:30/api-name=test-api/api-version=v1/,signature=5b15ecf0a5a6cc14c12651f628a9bbc8958dcd8edc9bbe8e9970481bb72668af
 // Returns:
 //   - algorithm: The algorithm used for signature computation
 //   - credentials: The access key ID
@@ -342,17 +353,17 @@ func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, crede
 	parts := splitKeyValue(authorizationHeaderValue, ",", "=")
 
 	// Extract required fields
-	algorithm = parts["alg"]
-	credentials = parts["creds"]
-	signedHeaders = parts["signed-headers"]
-	signature = parts["sign"]
+	algorithm = parts[ALGORITHM_KEY]
+	credentials = parts[CREDENTIAL_KEY]
+	signedHeaders = parts[SIGNED_HEADERS_KEY]
+	signature = parts[SIGNATURE_KEY]
 
 	// Validate all required fields are present
 	if algorithm == "" || credentials == "" || signedHeaders == "" || signature == "" {
 		return "", "", "", "", ErrInvalidAuthHeader
 	}
 
-	if !strings.EqualFold(algorithm, "HMAC-SHA256") {
+	if !strings.EqualFold(algorithm, ALGORITHM_VALUE) {
 		return "", "", "", "", ErrInvalidAlgorithm
 	}
 

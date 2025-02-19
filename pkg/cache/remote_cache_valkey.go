@@ -53,15 +53,18 @@ func (c *RemoteCacheValkey) makeKey(key string) string {
 // Get retrieves a value from the cache for the given key.
 // It returns the value and a boolean indicating whether the key was found.
 func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (string, bool) {
-	cmd := vkClient.B().Get().Key(c.makeKey(key)).Build()
+	compositeKey := c.makeKey(key)
+	var cmd valkey.Completed
+	if !c.applyTouch {
+		cmd = vkClient.B().Get().Key(compositeKey).Build()
+	} else {
+		cmd = vkClient.B().Getex().Key(compositeKey).Ex(c.ttl).Build()
+	}
 	val, err := vkClient.Do(ctx, cmd).ToString()
 	if err != nil {
 		return "", false
 	}
-	if val != "" && c.applyTouch {
-		c.Expire(ctx, key, c.ttl)
-	}
-	return val, true
+	return val, val != ""
 }
 
 // Set stores a value in the cache for the given key.

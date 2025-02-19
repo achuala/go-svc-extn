@@ -32,10 +32,11 @@ func TestRemoteCache(t *testing.T) {
 		DefaultTTL:      time.Second * 10,
 		RemoteCacheAddr: "localhost:6379", // Adjust this to your remote cache address
 	})
-	_, err1, cleanup1 := cache.NewCache(&cache.CacheConfig{
+	remoteCache2, err1, cleanup1 := cache.NewCache(&cache.CacheConfig{
 		Mode:            "remote",
 		CacheName:       "test1",
-		DefaultTTL:      time.Second * 20,
+		DefaultTTL:      time.Second * 10,
+		ApplyTouch:      true,
 		RemoteCacheAddr: "localhost:6379", // Adjust this to your remote cache address
 	})
 	assert.NoError(t, err)
@@ -80,4 +81,16 @@ func TestRemoteCache(t *testing.T) {
 	// Verify key has expired
 	_, ok = remoteCache.Get(ctx, key)
 	assert.False(t, ok)
+
+	remoteCache2.Set(ctx, key, value)
+	time.Sleep(time.Second * 1)
+	retrievedValue, ok = remoteCache2.Get(ctx, key)
+	assert.True(t, ok)
+	assert.Equal(t, value, retrievedValue)
+	// Wait for TTL to expire
+	time.Sleep(ttl + time.Second)
+
+	// Verify key has not expired
+	_, ok = remoteCache2.Get(ctx, key)
+	assert.True(t, ok)
 }
