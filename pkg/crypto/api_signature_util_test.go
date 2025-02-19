@@ -51,11 +51,11 @@ func TestComputeSignature(t *testing.T) {
 			accessSecret: "test-secret-key",
 			payload:      `{"data":"test"}`,
 			headers: map[string]string{
-				TIMESTAMP_KEY: "2024-03-14T12:00:00Z",
-				API_KEY:       "test-api",
-				VERSION_KEY:   "v1",
-				CHANNEL_KEY:   "web",
-				USER_ID_KEY:   "test-user",
+				HeaderTimestamp:  "2024-03-14T12:00:00Z",
+				HeaderAPIName:    "test-api",
+				HeaderAPIVersion: "v1",
+				HeaderChannel:    "web",
+				HeaderUserID:     "test-user",
 			},
 			wantSignLen: 64,
 			wantErr:     false,
@@ -65,11 +65,11 @@ func TestComputeSignature(t *testing.T) {
 			accessSecret: "test-secret-key",
 			payload:      "",
 			headers: map[string]string{
-				TIMESTAMP_KEY: "2024-03-14T12:00:00Z",
-				API_KEY:       "test-api",
-				VERSION_KEY:   "v1",
-				CHANNEL_KEY:   "web",
-				USER_ID_KEY:   "test-user",
+				HeaderTimestamp:  "2024-03-14T12:00:00Z",
+				HeaderAPIName:    "test-api",
+				HeaderAPIVersion: "v1",
+				HeaderChannel:    "web",
+				HeaderUserID:     "test-user",
 			},
 			wantSignLen: 64,
 			wantErr:     false,
@@ -79,11 +79,11 @@ func TestComputeSignature(t *testing.T) {
 			accessSecret: "test-secret-key",
 			payload:      `{"data":"test2"}`,
 			headers: map[string]string{
-				TIMESTAMP_KEY: "2024-03-14T13:00:00Z",
-				API_KEY:       "test-api",
-				VERSION_KEY:   "v1",
-				CHANNEL_KEY:   "web",
-				USER_ID_KEY:   "test-user",
+				HeaderTimestamp:  "2024-03-14T13:00:00Z",
+				HeaderAPIName:    "test-api",
+				HeaderAPIVersion: "v1",
+				HeaderChannel:    "web",
+				HeaderUserID:     "test-user",
 			},
 			wantSignLen: 64,
 			wantErr:     false,
@@ -204,7 +204,7 @@ func TestSignPayload(t *testing.T) {
 	}
 }
 
-func TestParseAuthorizationHeader(t *testing.T) {
+func TestParseSignatureHeader(t *testing.T) {
 	tests := []struct {
 		name          string
 		authHeader    string
@@ -237,7 +237,7 @@ func TestParseAuthorizationHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			alg, creds, headers, signature, err := ParseAuthorizationHeader(tt.authHeader)
+			alg, creds, headers, signature, err := ParseSignatureHeader(tt.authHeader)
 
 			if tt.expectedError != "" {
 				if err == nil || err.Error() != tt.expectedError {

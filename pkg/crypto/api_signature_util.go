@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -14,18 +13,19 @@ import (
 	"gorm.io/gorm"
 )
 
-const TIMESTAMP_KEY = "timestamp"
-const API_KEY = "api-name"
-const VERSION_KEY = "api-version"
-const CHANNEL_KEY = "channel"
-const USER_ID_KEY = "user-id"
-const ALGORITHM_KEY = "alg"
-const CREDENTIAL_KEY = "access-key"
-const SIGNED_HEADERS_KEY = "signed-headers"
-const SIGNATURE_KEY = "signature"
-
-const TERMINATOR_VALUE = "@@"
-const ALGORITHM_VALUE = "HMAC-SHA256"
+const (
+	HeaderTimestamp     = "timestamp"
+	HeaderAPIName       = "api-name"
+	HeaderAPIVersion    = "api-version"
+	HeaderChannel       = "channel"
+	HeaderUserID        = "user-id"
+	HeaderAlgorithm     = "alg"
+	HeaderCredential    = "access-key"
+	HeaderSignedHeaders = "signed-headers"
+	HeaderSignature     = "signature"
+	TerminatorValue     = "@@"
+	AlgorithmValue      = "HMAC-SHA256"
+)
 
 // Define custom error types
 type SignatureError string
@@ -43,6 +43,9 @@ const (
 	ErrSignatureMismatch      SignatureError = "SIGNATURE_MISMATCH"
 	ErrInvalidAccessSecret    SignatureError = "INVALID_ACCESS_SECRET"
 	ErrInvalidAuthHeader      SignatureError = "INVALID_AUTHORIZATION_HEADER"
+	ErrEmptyKeyID             SignatureError = "EMPTY_KEY_ID"
+	ErrAccessKeyNotFound      SignatureError = "ACCESS_KEY_NOT_FOUND"
+	ErrDatabaseError          SignatureError = "DATABASE_ERROR"
 )
 
 // AccessSecretProvider is an interface for retrieving access secrets.
@@ -81,32 +84,34 @@ func (a *APIAccessKey) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
+// DbAccessSecretProvider manages API access key storage and retrieval
 type DbAccessSecretProvider struct {
 	db         *gorm.DB
 	accessKeys sync.Map
 }
 
+// NewDbAccessSecretProvider creates a new DbAccessSecretProvider instance
+// with the provided database connection
 func NewDbAccessSecretProvider(db *gorm.DB) *DbAccessSecretProvider {
 	return &DbAccessSecretProvider{db: db}
 }
 
 func (r *DbAccessSecretProvider) GetAccessSecret(ctx context.Context, keyID string) (*APIAccessKey, error) {
+	if keyID == "" {
+		return nil, ErrEmptyKeyID
+	}
 	// Check cache first
 	if cached, ok := r.accessKeys.Load(keyID); ok {
 		return cached.(*APIAccessKey), nil
 	}
 
 	var accessKey APIAccessKey
-	if keyID == "" {
-		return nil, errors.New("EMPTY_KEY_ID")
-	}
-
 	result := r.db.Where("key_id = ?", keyID).Find(&accessKey)
 	if result.Error != nil {
-		return nil, fmt.Errorf("database error: %w", result.Error)
+		return nil, SignatureError(fmt.Sprintf("DATABASE_ERROR: %v", result.Error))
 	}
 	if result.RowsAffected == 0 {
-		return nil, errors.New("ACCESS_KEY_NOT_FOUND")
+		return nil, ErrAccessKeyNotFound
 	}
 
 	// Store in cache
@@ -114,73 +119,48 @@ func (r *DbAccessSecretProvider) GetAccessSecret(ctx context.Context, keyID stri
 	return &accessKey, nil
 }
 
-func (r *DbAccessSecretProvider) CreateAccessKey(accessKey *APIAccessKey) error {
-	return r.db.Create(accessKey).Error
+// CreateAccessKey stores a new API access key in the database
+// Returns an error if the operation fails
+func (r *DbAccessSecretProvider) CreateAccessKey(ctx context.Context, accessKey *APIAccessKey) error {
+	return r.db.WithContext(ctx).Create(accessKey).Error
 }
 
-func (r *DbAccessSecretProvider) UpdateAccessKey(accessKey *APIAccessKey) error {
-	return r.db.Save(accessKey).Error
+func (r *DbAccessSecretProvider) UpdateAccessKey(ctx context.Context, accessKey *APIAccessKey) error {
+	return r.db.WithContext(ctx).Save(accessKey).Error
 }
 
-func (r *DbAccessSecretProvider) DeleteAccessKey(keyID string) error {
-	return r.db.Delete(&APIAccessKey{}, "key_id = ?", keyID).Error
+func (r *DbAccessSecretProvider) DeleteAccessKey(ctx context.Context, keyID string) error {
+	return r.db.WithContext(ctx).Delete(&APIAccessKey{}, "key_id = ?", keyID).Error
 }
 
-// HmacSha256 computes the HMAC-SHA256 of the given data using the provided key.
-// It returns the resulting hash as a byte slice.
+// Cryptographic Operations
 func hmacSha256(data string, key []byte) []byte {
 	h := hmac.New(sha256.New, key)
 	h.Write([]byte(data))
 	return h.Sum(nil)
 }
 
-// Sha256 computes the SHA256 hash of the input string.
-// It returns the resulting hash as a byte slice.
 func sha256Hash(input string) []byte {
 	h := sha256.New()
 	h.Write([]byte(input))
 	return h.Sum(nil)
 }
 
-// GetSignatureKey generates a signature key using the provided parameters.
-// It combines the access secret key, timestamp, API name, and API version
-// to create a unique signature key.
 func getSignatureKey(accessSecretKey, timeStamp, apiName, apiVersion string) []byte {
-
 	kSecret := []byte(accessSecretKey)
 	kDate := hmacSha256(timeStamp, kSecret)
 	kVersion := hmacSha256(apiVersion, kDate)
 	kApi := hmacSha256(apiName, kVersion)
-	return hmacSha256(TERMINATOR_VALUE, kApi)
+	return hmacSha256(TerminatorValue, kApi)
 }
 
-// ComputeSignature generates a cryptographic signature for API request validation.
-// It uses HMAC-SHA256 algorithm to create a signature based on the provided secret key,
-// payload, and headers.
-//
-// Parameters:
-//   - accessSecretKey: The secret key used for signature generation
-//   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
-//   - headers: A map containing required headers:
-//   - "timestamp": Timestamp
-//   - "api-name": API name
-//   - "api-version": API version
-//   - "channel": Channel identifier
-//   - "user-id": User ID
-//
-// Returns:
-//   - string: The computed signature as a hexadecimal string
-//
-// The signature is computed using the following steps:
-//  1. Generate a signing key using the secret key and header information
-//  2. Combine channel, userId, and payload hash
-//  3. Create final signature using algorithm, timestamp, and request hash
+// Signature Operations
 func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]string) (string, error) {
-	timestamp := headers[TIMESTAMP_KEY]
-	apiName := headers[API_KEY]
-	apiVersion := headers[VERSION_KEY]
-	channel := headers[CHANNEL_KEY]
-	userId := headers[USER_ID_KEY]
+	timestamp := headers[HeaderTimestamp]
+	apiName := headers[HeaderAPIName]
+	apiVersion := headers[HeaderAPIVersion]
+	channel := headers[HeaderChannel]
+	userId := headers[HeaderUserID]
 
 	if timestamp == "" || apiName == "" || apiVersion == "" || channel == "" || userId == "" {
 		return "", ErrMissingRequiredHeaders
@@ -190,30 +170,11 @@ func ComputeSignature(accessSecretKey, payloadHash string, headers map[string]st
 
 	request := channel + userId + payloadHash
 
-	stringToSign := ALGORITHM_VALUE + timestamp + hex.EncodeToString(sha256Hash(request))
+	stringToSign := AlgorithmValue + timestamp + hex.EncodeToString(sha256Hash(request))
 
 	return hex.EncodeToString(hmacSha256(stringToSign, signingKey)), nil
 }
 
-// VerifySignature validates the authenticity of a request by comparing the provided signature
-// with a computed signature using the request payload and headers.
-//
-// Parameters:
-//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
-//   - payloadHash: The SHA256 hash of the request body or payload in hexadecimal format
-//   - signedHeadersValue: The signed headers value in the format "header1=value1/header2=value2/"
-//   - providedSignature: The provided signature to be verified, in hexadecimal format
-//   - accessSecret: The access secret key for signature computation and validation
-//
-// Use ParseAuthorizationHeader to extract the values and pass it here.
-// Returns:
-//   - bool: true if signature is valid, false otherwise
-//   - error: Error if validation fails or if required parameters are missing/invalid
-//
-// Possible errors:
-//   - SIGNATURE_MISSING: If signature is not provided
-//   - INVALID_SIGNED_HEADERS: If required headers are missing
-//   - SIGNATURE_MISMATCH: If computed signature doesn't match provided signature
 func VerifySignature(signedHeadersValue, payloadHash, providedSignature, accessSecret string) (bool, error) {
 	if providedSignature == "" {
 		return false, ErrSignatureMissing
@@ -262,20 +223,20 @@ func buildSignatureHeader(credentialStr, signedHeadersStr, computedSignature str
 	const separator = ","
 
 	var parts strings.Builder
-	parts.Grow(len(ALGORITHM_KEY) + len(ALGORITHM_VALUE) + len(separator) +
-		len(CREDENTIAL_KEY) + len(credentialStr) + len(separator) +
-		len(SIGNED_HEADERS_KEY) + len(signedHeadersStr) + len(separator) +
-		len(SIGNATURE_KEY) + len(computedSignature))
-	parts.WriteString(ALGORITHM_KEY)
-	parts.WriteString(ALGORITHM_VALUE)
+	parts.Grow(len(HeaderAlgorithm) + len(AlgorithmValue) + len(separator) +
+		len(HeaderCredential) + len(credentialStr) + len(separator) +
+		len(HeaderSignedHeaders) + len(signedHeadersStr) + len(separator) +
+		len(HeaderSignature) + len(computedSignature))
+	parts.WriteString(HeaderAlgorithm)
+	parts.WriteString(AlgorithmValue)
 	parts.WriteString(separator)
-	parts.WriteString(CREDENTIAL_KEY)
+	parts.WriteString(HeaderCredential)
 	parts.WriteString(credentialStr)
 	parts.WriteString(separator)
-	parts.WriteString(SIGNED_HEADERS_KEY)
+	parts.WriteString(HeaderSignedHeaders)
 	parts.WriteString(signedHeadersStr)
 	parts.WriteString(separator)
-	parts.WriteString(SIGNATURE_KEY)
+	parts.WriteString(HeaderSignature)
 	parts.WriteString(computedSignature)
 	return parts.String()
 }
@@ -315,11 +276,11 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, acc
 		return "", "", "", ErrInvalidAccessSecret
 	}
 	headers := map[string]string{
-		TIMESTAMP_KEY: timestamp,
-		API_KEY:       apiName,
-		VERSION_KEY:   apiVersion,
-		CHANNEL_KEY:   channel,
-		USER_ID_KEY:   userId,
+		HeaderTimestamp:  timestamp,
+		HeaderAPIName:    apiName,
+		HeaderAPIVersion: apiVersion,
+		HeaderChannel:    channel,
+		HeaderUserID:     userId,
 	}
 	var signedHeadersBuilder strings.Builder
 	for key, value := range headers {
@@ -338,7 +299,7 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, acc
 	return computedSignature, signatureHeader, signedHeaders, nil
 }
 
-// ParseAuthorizationHeader parses the authorization header value and returns its components.
+// ParseSignatureHeader parses the signature header value and returns its components.
 // Format: "alg=HMAC-SHA256,access-key=access-key-id,signed-headers=header1=value1/header2=value2/,signature=signature"
 // Sample header value
 // alg=HMAC-SHA256,access-key=test-key-id,signed-headers=channel=web/user-id=test-user/timestamp=2025-01-05T21:00:02+05:30/api-name=test-api/api-version=v1/,signature=5b15ecf0a5a6cc14c12651f628a9bbc8958dcd8edc9bbe8e9970481bb72668af
@@ -348,36 +309,27 @@ func SignPayload(apiName, apiVersion, channel, userId, payload, accessKeyId, acc
 //   - signedHeaders: The headers used in signature computation
 //   - signature: The computed signature
 //   - err: Error if parsing fails
-func ParseAuthorizationHeader(authorizationHeaderValue string) (algorithm, credentials, signedHeaders, signature string, err error) {
+func ParseSignatureHeader(signatureHeaderValue string) (algorithm, credentials, signedHeaders, signature string, err error) {
 	// Split by comma to separate main components
-	parts := splitKeyValue(authorizationHeaderValue, ",", "=")
+	parts := splitKeyValue(signatureHeaderValue, ",", "=")
 
 	// Extract required fields
-	algorithm = parts[ALGORITHM_KEY]
-	credentials = parts[CREDENTIAL_KEY]
-	signedHeaders = parts[SIGNED_HEADERS_KEY]
-	signature = parts[SIGNATURE_KEY]
+	algorithm = parts[HeaderAlgorithm]
+	credentials = parts[HeaderCredential]
+	signedHeaders = parts[HeaderSignedHeaders]
+	signature = parts[HeaderSignature]
 
 	// Validate all required fields are present
 	if algorithm == "" || credentials == "" || signedHeaders == "" || signature == "" {
 		return "", "", "", "", ErrInvalidAuthHeader
 	}
 
-	if !strings.EqualFold(algorithm, ALGORITHM_VALUE) {
+	if !strings.EqualFold(algorithm, AlgorithmValue) {
 		return "", "", "", "", ErrInvalidAlgorithm
 	}
 
 	return algorithm, credentials, signedHeaders, signature, nil
 }
-
-// Add constants for error messages
-const (
-	ErrEmptyKeyID        = "EMPTY_KEY_ID"
-	ErrAccessKeyNotFound = "ACCESS_KEY_NOT_FOUND"
-	ErrInvalidSignature  = "SIGNATURE_MISMATCH"
-	ErrMissingHeaders    = "MISSING_REQUIRED_HEADERS"
-	// ... other error constants
-)
 
 // Add validation for time-based operations
 func (a *APIAccessKey) IsValid() bool {
