@@ -384,7 +384,7 @@ func TestCompare(t *testing.T) {
 		assert.Nil(t, hash.CompareMD5Crypt(context.Background(), []byte("ory"), []byte("$md5-crypt$xWMlm2eL$GGTOpgZu4p2k6ORprAu3b.")))
 		assert.Error(t, hash.Compare(context.Background(), []byte("ory"), []byte("$md5-crypt$E7zjruqF$RTglYR1CzBHwwiTk9nVzx1")))
 
-		assert.ErrorIs(t, hash.Compare(context.Background(), []byte("ory"), []byte("$md5-crypt$$")), hash.ErrMismatchedHashAndPassword)
+		assert.ErrorIs(t, hash.Compare(context.Background(), []byte("ory"), []byte("$md5-crypt$$")), hash.ErrMismatchedHashAndCredential)
 		assert.Error(t, hash.Compare(context.Background(), []byte("ory"), []byte("$md5-crypt$$$")))
 		// per crypt(5), `md5crypt` can be run without a salt, but the salt section must still be present
 		assert.Error(t, hash.Compare(context.Background(), []byte("test"), []byte("$md5-crypt$whuMjZj.HMFoaTaZRRtkO0")), "md5crypt decode error: provided encoded hash has an invalid format")

@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	ErrInvalidHash               = errors.New("the encoded hash is not in the correct format")
-	ErrIncompatibleVersion       = errors.New("incompatible version of argon2")
-	ErrMismatchedHashAndPassword = errors.New("passwords do not match")
+	ErrInvalidHash                 = errors.New("the encoded hash is not in the correct format")
+	ErrIncompatibleVersion         = errors.New("incompatible version of argon2")
+	ErrMismatchedHashAndCredential = errors.New("credential does not match")
 )
 
 type Argon2 struct {

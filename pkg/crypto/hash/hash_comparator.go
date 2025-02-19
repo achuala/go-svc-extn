@@ -92,7 +92,7 @@ func CompareBcrypt(_ context.Context, password []byte, hash []byte) error {
 	err := bcrypt.CompareHashAndPassword(hash, password)
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return errors.WithStack(ErrMismatchedHashAndPassword)
+			return errors.WithStack(ErrMismatchedHashAndCredential)
 		}
 		return err
 	}
@@ -414,7 +414,7 @@ func compareSHAHelper(hasher string, raw []byte, hash []byte) error {
 		sum := sha512.Sum512(raw)
 		sha = sum[:]
 	default:
-		return errors.WithStack(ErrMismatchedHashAndPassword)
+		return errors.WithStack(ErrMismatchedHashAndCredential)
 	}
 
 	encodedHash := []byte(base64.StdEncoding.EncodeToString(hash))
@@ -433,7 +433,7 @@ func compareCryptHelper(password []byte, hash string) error {
 		return nil
 	}
 
-	return errors.WithStack(ErrMismatchedHashAndPassword)
+	return errors.WithStack(ErrMismatchedHashAndCredential)
 }
 
 // decodeSSHAHash decodes SSHA[1|256|512] encoded password hash in usual {SSHA...} format.
@@ -565,5 +565,5 @@ func comparePasswordHashConstantTime(hash, otherHash []byte) error {
 	if subtle.ConstantTimeCompare(hash, otherHash) == 1 {
 		return nil
 	}
-	return errors.WithStack(ErrMismatchedHashAndPassword)
+	return errors.WithStack(ErrMismatchedHashAndCredential)
 }
