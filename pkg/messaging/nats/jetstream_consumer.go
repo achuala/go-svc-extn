@@ -78,10 +78,14 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 	return jsConsumer, func() {
 		log.Info("closing consumer")
 		if jsConsumer.subscriber != nil {
-			jsConsumer.subscriber.Close()
+			if err := jsConsumer.subscriber.Close(); err != nil {
+				log.Warnf("error closing subscriber: %v", err)
+			}
 		}
 		if jsConsumer.router != nil {
-			jsConsumer.router.Close()
+			if err := jsConsumer.router.Close(); err != nil {
+				log.Warnf("error closing router: %v", err)
+			}
 		}
 	}, nil
 }

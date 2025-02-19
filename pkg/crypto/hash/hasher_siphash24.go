@@ -22,7 +22,9 @@ func NewHasherSipHash24(c *SipHashConfiguration) *SipHash24 {
 func (h *SipHash24) Generate(ctx context.Context, data []byte) ([]byte, error) {
 
 	hasher := siphash.New([]byte(h.c.Key))
-	hasher.Write(data)
+	if _, err := hasher.Write(data); err != nil {
+		return nil, err
+	}
 	hash := hasher.Sum(nil)
 
 	return []byte(base64.StdEncoding.EncodeToString(hash)), nil

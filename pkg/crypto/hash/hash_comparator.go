@@ -3,8 +3,6 @@ package hash
 import (
 	"bytes"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/md5"  //#nosec G501 -- compatibility for imported passwords
 	"crypto/sha1" //#nosec G505 -- compatibility for imported passwords
 	"crypto/sha256"
@@ -69,8 +67,6 @@ func Compare(ctx context.Context, password []byte, hash []byte) error {
 		return CompareSSHA(ctx, password, hash)
 	case IsSHAHash(hash):
 		return CompareSHA(ctx, password, hash)
-	case IsFirebaseScryptHash(hash):
-		return CompareFirebaseScrypt(ctx, password, hash)
 	case IsMD5Hash(hash):
 		return CompareMD5(ctx, password, hash)
 	default:
@@ -202,34 +198,6 @@ func CompareSHA(_ context.Context, password []byte, hash []byte) error {
 	return compareSHAHelper(hasher, raw, hash)
 }
 
-func CompareFirebaseScrypt(_ context.Context, password []byte, hash []byte) error {
-	// Extract the parameters, salt and derived key from the encoded password
-	// hash.
-	p, salt, saltSeparator, hash, signerKey, err := decodeFirebaseScryptHash(string(hash))
-	if err != nil {
-		return err
-	}
-
-	// Derive the key from the other password using the same parameters.
-	// FirebaseScript algorithm implementation from https://github.com/Aoang/firebase-scrypt
-	ck, err := scrypt.Key(password, append(salt, saltSeparator...), int(p.Cost), int(p.Block), int(p.Parallelization), 32)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	var block cipher.Block
-	if block, err = aes.NewCipher(ck); err != nil {
-		return errors.WithStack(err)
-	}
-
-	cipherText := make([]byte, aes.BlockSize+len(signerKey))
-	stream := cipher.NewCTR(block, cipherText[:aes.BlockSize])
-	stream.XORKeyStream(cipherText[aes.BlockSize:], signerKey)
-	otherHash := cipherText[aes.BlockSize:]
-
-	return comparePasswordHashConstantTime(hash, otherHash)
-}
-
 func CompareMD5(_ context.Context, password []byte, hash []byte) error {
 	// Extract the hash from the encoded password
 	pf, salt, hash, err := decodeMD5Hash(string(hash))
@@ -249,34 +217,32 @@ func CompareMD5(_ context.Context, password []byte, hash []byte) error {
 }
 
 var (
-	isMD5CryptHash       = regexp.MustCompile(`^\$md5-crypt\$`)
-	isBcryptHash         = regexp.MustCompile(`^\$2[abzy]?\$`)
-	isSHA256CryptHash    = regexp.MustCompile(`^\$sha256-crypt\$`)
-	isSHA512CryptHash    = regexp.MustCompile(`^\$sha512-crypt\$`)
-	isArgon2idHash       = regexp.MustCompile(`^\$argon2id\$`)
-	isArgon2iHash        = regexp.MustCompile(`^\$argon2i\$`)
-	isPbkdf2Hash         = regexp.MustCompile(`^\$pbkdf2-sha[0-9]{1,3}\$`)
-	isScryptHash         = regexp.MustCompile(`^\$scrypt\$`)
-	isSSHAHash           = regexp.MustCompile(`^{SSHA(256|512)?}.*`)
-	isSHAHash            = regexp.MustCompile(`^\$sha(1|256|512)\$`)
-	isFirebaseScryptHash = regexp.MustCompile(`^\$firescrypt\$`)
-	isMD5Hash            = regexp.MustCompile(`^\$md5\$`)
-	isSip24Hash          = regexp.MustCompile(`^\$sip24\$`)
+	isMD5CryptHash    = regexp.MustCompile(`^\$md5-crypt\$`)
+	isBcryptHash      = regexp.MustCompile(`^\$2[abzy]?\$`)
+	isSHA256CryptHash = regexp.MustCompile(`^\$sha256-crypt\$`)
+	isSHA512CryptHash = regexp.MustCompile(`^\$sha512-crypt\$`)
+	isArgon2idHash    = regexp.MustCompile(`^\$argon2id\$`)
+	isArgon2iHash     = regexp.MustCompile(`^\$argon2i\$`)
+	isPbkdf2Hash      = regexp.MustCompile(`^\$pbkdf2-sha[0-9]{1,3}\$`)
+	isScryptHash      = regexp.MustCompile(`^\$scrypt\$`)
+	isSSHAHash        = regexp.MustCompile(`^{SSHA(256|512)?}.*`)
+	isSHAHash         = regexp.MustCompile(`^\$sha(1|256|512)\$`)
+	isMD5Hash         = regexp.MustCompile(`^\$md5\$`)
+	isSip24Hash       = regexp.MustCompile(`^\$sip24\$`)
 )
 
-func IsMD5CryptHash(hash []byte) bool       { return isMD5CryptHash.Match(hash) }
-func IsBcryptHash(hash []byte) bool         { return isBcryptHash.Match(hash) }
-func IsSHA256CryptHash(hash []byte) bool    { return isSHA256CryptHash.Match(hash) }
-func IsSHA512CryptHash(hash []byte) bool    { return isSHA512CryptHash.Match(hash) }
-func IsArgon2idHash(hash []byte) bool       { return isArgon2idHash.Match(hash) }
-func IsArgon2iHash(hash []byte) bool        { return isArgon2iHash.Match(hash) }
-func IsPbkdf2Hash(hash []byte) bool         { return isPbkdf2Hash.Match(hash) }
-func IsScryptHash(hash []byte) bool         { return isScryptHash.Match(hash) }
-func IsSSHAHash(hash []byte) bool           { return isSSHAHash.Match(hash) }
-func IsSHAHash(hash []byte) bool            { return isSHAHash.Match(hash) }
-func IsFirebaseScryptHash(hash []byte) bool { return isFirebaseScryptHash.Match(hash) }
-func IsMD5Hash(hash []byte) bool            { return isMD5Hash.Match(hash) }
-func IsSip24Hash(hash []byte) bool          { return isSip24Hash.Match(hash) }
+func IsMD5CryptHash(hash []byte) bool    { return isMD5CryptHash.Match(hash) }
+func IsBcryptHash(hash []byte) bool      { return isBcryptHash.Match(hash) }
+func IsSHA256CryptHash(hash []byte) bool { return isSHA256CryptHash.Match(hash) }
+func IsSHA512CryptHash(hash []byte) bool { return isSHA512CryptHash.Match(hash) }
+func IsArgon2idHash(hash []byte) bool    { return isArgon2idHash.Match(hash) }
+func IsArgon2iHash(hash []byte) bool     { return isArgon2iHash.Match(hash) }
+func IsPbkdf2Hash(hash []byte) bool      { return isPbkdf2Hash.Match(hash) }
+func IsScryptHash(hash []byte) bool      { return isScryptHash.Match(hash) }
+func IsSSHAHash(hash []byte) bool        { return isSSHAHash.Match(hash) }
+func IsSHAHash(hash []byte) bool         { return isSHAHash.Match(hash) }
+func IsMD5Hash(hash []byte) bool         { return isMD5Hash.Match(hash) }
+func IsSip24Hash(hash []byte) bool       { return isSip24Hash.Match(hash) }
 
 func IsValidHashFormat(hash []byte) bool {
 	if IsMD5CryptHash(hash) ||
@@ -289,7 +255,6 @@ func IsValidHashFormat(hash []byte) bool {
 		IsScryptHash(hash) ||
 		IsSSHAHash(hash) ||
 		IsSHAHash(hash) ||
-		IsFirebaseScryptHash(hash) ||
 		IsMD5Hash(hash) ||
 		IsSip24Hash(hash) {
 		return true

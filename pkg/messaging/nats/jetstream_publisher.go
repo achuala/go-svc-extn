@@ -40,7 +40,9 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 	}
 	jsPublisher := &NatsJsPublisher{publisher: publisher}
 	return jsPublisher, func() {
-		publisher.Close()
+		if err := publisher.Close(); err != nil {
+			log.Warnf("error closing publisher: %v", err)
+		}
 	}, nil
 }
 
