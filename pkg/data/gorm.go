@@ -19,6 +19,14 @@ type Transaction interface {
 	InTx(context.Context, func(ctx context.Context) error) error
 }
 
+type GormOptions struct {
+	SkipDefaultTransaction bool
+	MaxIdleConns           int
+	MaxOpenConns           int
+	ConnMaxIdleTime        time.Duration
+	ConnMaxLifetime        time.Duration
+}
+
 type contextTxKey struct{}
 
 // Execute the database actions in a transaction
@@ -69,6 +77,24 @@ func NewGorm(dsn string) (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(10)
 	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
 	sqlDB.SetConnMaxLifetime(8 * time.Hour)
+	return db, nil
+}
+func NewGormWithOptions(dsn string, logger log.Logger, opts GormOptions) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: opts.SkipDefaultTransaction, Logger: NewGormLogger(logger)})
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Use(tracing.NewPlugin(tracing.WithoutMetrics())); err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxIdleConns(opts.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(opts.MaxOpenConns)
+	sqlDB.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
+	sqlDB.SetConnMaxLifetime(opts.ConnMaxLifetime)
 	return db, nil
 }
 
