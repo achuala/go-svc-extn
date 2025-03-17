@@ -60,7 +60,7 @@ func TestValidateJson(t *testing.T) {
 		t.Fatalf("failed to create validator: %v", err)
 	}
 
-	validJson := map[string]interface{}{
+	validJson := map[string]any{
 		"name": "John Doe",
 		"age":  30,
 	}
@@ -70,7 +70,7 @@ func TestValidateJson(t *testing.T) {
 		t.Errorf("expected valid JSON to pass validation, got error: %v", err)
 	}
 
-	invalidJson := map[string]interface{}{
+	invalidJson := map[string]any{
 		"age": 30,
 	}
 

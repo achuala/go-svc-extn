@@ -40,7 +40,7 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 			return nil, errors.New("missing id in the json schema - " + f.Name())
 		}
 		// If there are any unique keys defined we will collect and store as well.
-		if uk, ok := jsonElems["uniqueKeys"].([]interface{}); ok {
+		if uk, ok := jsonElems["uniqueKeys"].([]any); ok {
 			if uniqueKeys, err := convertInterfaceSliceToStringSlice(uk); err == nil {
 				if len(uniqueKeys) > 0 {
 					schemaUniqueKeys[schemaId] = uniqueKeys
@@ -85,7 +85,7 @@ func ValidateMap[T any](schema *jsonschema.Schema, data map[string]T) error {
 		return fmt.Errorf("error marshaling data to json: %w", err)
 	}
 
-	var jsonObject interface{}
+	var jsonObject any
 	if err := json.Unmarshal(jsonData, &jsonObject); err != nil {
 		return fmt.Errorf("error unmarshaling json data: %w", err)
 	}
@@ -120,8 +120,8 @@ func convertMapToAny(mapData map[string]string) (any, error) {
 	return v, err
 }
 
-// ConvertInterfaceSliceToStringSlice converts a slice of interface{} to a slice of string
-func convertInterfaceSliceToStringSlice(input []interface{}) ([]string, error) {
+// ConvertInterfaceSliceToStringSlice converts a slice of any to a slice of string
+func convertInterfaceSliceToStringSlice(input []any) ([]string, error) {
 	output := make([]string, len(input))
 	for i, v := range input {
 		str, ok := v.(string)

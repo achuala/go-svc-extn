@@ -58,21 +58,21 @@ func (l *GormLogger) SetSlowThreshold(threshold time.Duration) {
 }
 
 // Info prints info
-func (l *GormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Info {
 		l.logger.Log(log.LevelInfo, msg, data)
 	}
 }
 
 // Warn prints warn messages
-func (l *GormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Warn {
 		l.logger.Log(log.LevelWarn, msg, data)
 	}
 }
 
 // Error prints error messages
-func (l *GormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l *GormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Error {
 		l.logger.Log(log.LevelError, msg, data)
 	}
@@ -113,12 +113,6 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 			"rows", rows,
 			"elapsed", elapsed,
 			"slow_query", true,
-		)
-	} else {
-		l.logger.Log(log.LevelDebug,
-			"sql", sql,
-			"rows", rows,
-			"elapsed", elapsed,
 		)
 	}
 }

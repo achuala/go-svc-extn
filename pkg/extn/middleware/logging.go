@@ -23,7 +23,7 @@ type Redacter interface {
 // Server is a server logging middleware.
 func Server(logger log.Logger) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, req any) (reply any, err error) {
 			return logMiddleware(ctx, req, handler, logger, "server")
 		}
 	}
@@ -32,13 +32,13 @@ func Server(logger log.Logger) middleware.Middleware {
 // Client is a client logging middleware.
 func Client(logger log.Logger) middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, req any) (reply any, err error) {
 			return logMiddleware(ctx, req, handler, logger, "client")
 		}
 	}
 }
 
-func logMiddleware(ctx context.Context, req interface{}, handler middleware.Handler, logger log.Logger, kind string) (reply interface{}, err error) {
+func logMiddleware(ctx context.Context, req any, handler middleware.Handler, logger log.Logger, kind string) (reply any, err error) {
 	var (
 		code      int32
 		reason    string
@@ -78,7 +78,7 @@ func logMiddleware(ctx context.Context, req interface{}, handler middleware.Hand
 }
 
 // extractArgs returns the string representation of the req
-func extractArgs(req interface{}) string {
+func extractArgs(req any) string {
 	switch v := req.(type) {
 	case proto.Message:
 		clone := proto.Clone(v)

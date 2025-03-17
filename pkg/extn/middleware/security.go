@@ -31,7 +31,7 @@ func getCorrelationIdFromCtx(ctx context.Context) string {
 // ServerSecurityHeaderValidator middleware validates the presence of required security headers
 func ServerSecurityHeaderValidator() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, req any) (reply any, err error) {
 			if tr, ok := transport.FromServerContext(ctx); ok {
 				authHeader := tr.RequestHeader().Get(string(CtxAuthorizationKey))
 				signatureHeader := tr.RequestHeader().Get(string(CtxSignedHeadersKey))
@@ -47,7 +47,7 @@ func ServerSecurityHeaderValidator() middleware.Middleware {
 // ServerCorrelationIdInjector middleware injects the correlation ID into the server context
 func ServerCorrelationIdInjector() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, req any) (reply any, err error) {
 			if tr, ok := transport.FromServerContext(ctx); ok {
 				correlationId := tr.RequestHeader().Get(string(CtxCorrelationIdKey))
 				if correlationId == "" {
@@ -64,7 +64,7 @@ func ServerCorrelationIdInjector() middleware.Middleware {
 // ClientCorrelationIdInjector middleware injects the correlation ID into the client request header
 func ClientCorrelationIdInjector() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
-		return func(ctx context.Context, req interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, req any) (reply any, err error) {
 			if tr, ok := transport.FromClientContext(ctx); ok {
 				correlationId := getCorrelationIdFromCtx(ctx)
 				tr.RequestHeader().Set(string(CtxCorrelationIdKey), correlationId)
