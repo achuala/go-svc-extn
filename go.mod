@@ -4,14 +4,14 @@ go 1.24.0
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250307204501-0409229c3780.1
-	github.com/ThreeDotsLabs/watermill v1.4.5
+	github.com/ThreeDotsLabs/watermill v1.4.6
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.3
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/bufbuild/protovalidate-go v0.9.2
 	github.com/cloudevents/sdk-go v1.2.0
 	github.com/dchest/siphash v1.2.3
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/go-crypt/crypt v0.3.4
+	github.com/go-crypt/crypt v0.3.5
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/godruoyi/go-snowflake v0.0.2
 	github.com/google/uuid v1.6.0
@@ -28,7 +28,7 @@ require (
 	google.golang.org/protobuf v1.36.5
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12
-	gorm.io/plugin/opentelemetry v0.1.11
+	gorm.io/plugin/opentelemetry v0.1.12
 )
 
 require (
@@ -38,11 +38,11 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-crypt/x v0.3.5 // indirect
+	github.com/go-crypt/x v0.3.6 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-playground/form/v4 v4.2.1 // indirect
+	github.com/go-playground/form/v4 v4.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/cel-go v0.24.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
