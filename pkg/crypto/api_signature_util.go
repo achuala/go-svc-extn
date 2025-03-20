@@ -226,17 +226,21 @@ func buildSignatureHeader(credentialStr, signedHeadersStr, computedSignature str
 	parts.Grow(len(HeaderAlgorithm) + len(AlgorithmValue) + len(separator) +
 		len(HeaderCredential) + len(credentialStr) + len(separator) +
 		len(HeaderSignedHeaders) + len(signedHeadersStr) + len(separator) +
-		len(HeaderSignature) + len(computedSignature))
+		len(HeaderSignature) + len(computedSignature) + 4) // 4 for the separator =
 	parts.WriteString(HeaderAlgorithm)
+	parts.WriteString("=")
 	parts.WriteString(AlgorithmValue)
 	parts.WriteString(separator)
 	parts.WriteString(HeaderCredential)
+	parts.WriteString("=")
 	parts.WriteString(credentialStr)
 	parts.WriteString(separator)
 	parts.WriteString(HeaderSignedHeaders)
+	parts.WriteString("=")
 	parts.WriteString(signedHeadersStr)
 	parts.WriteString(separator)
 	parts.WriteString(HeaderSignature)
+	parts.WriteString("=")
 	parts.WriteString(computedSignature)
 	return parts.String()
 }
