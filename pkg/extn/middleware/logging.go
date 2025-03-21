@@ -62,18 +62,30 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 		code = se.Code
 		reason = se.Reason
 	}
+
+	rid := getCorrelationIdFromCtx(ctx)
 	level, stack := extractError(err)
-	_ = log.WithContext(ctx, logger).Log(level,
+
+	ctxFields := make([]any, 0)
+	if rid != "" {
+		ctxFields = append(ctxFields, "rid", rid)
+	}
+	if stack != "" {
+		ctxFields = append(ctxFields, "stack", stack)
+	}
+	if reason != "" {
+		ctxFields = append(ctxFields, "reason", reason)
+	}
+	logFields := append(ctxFields,
 		"kind", kind,
 		"component", component,
 		"op", operation,
 		"req", extractArgs(req),
 		"resp", extractArgs(reply),
 		"code", code,
-		"reason", reason,
-		"stack", stack,
 		"latency", time.Since(startTime).Seconds(),
 	)
+	_ = log.WithContext(ctx, logger).Log(level, logFields...)
 	return
 }
 
@@ -119,7 +131,7 @@ func handleSensitiveData(m protoreflect.Message) {
 				return true
 			})
 		case protoreflect.List:
-			for i := 0; i < typed.Len(); i++ {
+			for i := range typed.Len() {
 				if msg, ok := typed.Get(i).Interface().(protoreflect.Message); ok {
 					handleSensitiveData(msg)
 				}
