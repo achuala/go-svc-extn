@@ -13,13 +13,13 @@ require (
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/go-crypt/crypt v0.3.5
 	github.com/go-kratos/kratos/v2 v2.8.4
-	github.com/godruoyi/go-snowflake v0.0.2
 	github.com/google/uuid v1.6.0
 	github.com/inhies/go-bytesize v0.0.0-20220417184213-4913239db9cf
 	github.com/lithammer/shortuuid/v4 v4.2.0
-	github.com/nats-io/nats.go v1.40.0
+	github.com/nats-io/nats.go v1.40.1
 	github.com/pkg/errors v0.9.1
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	github.com/sony/sonyflake v1.2.0
 	github.com/stretchr/testify v1.10.0
 	github.com/tink-crypto/tink-go/v2 v2.3.0
 	github.com/valkey-io/valkey-go v1.0.56
