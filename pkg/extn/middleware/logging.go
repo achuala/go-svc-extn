@@ -76,12 +76,14 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 	if reason != "" {
 		ctxFields = append(ctxFields, "reason", reason)
 	}
+	if reply != nil {
+		ctxFields = append(ctxFields, "resp", extractArgs(reply))
+	}
 	logFields := append(ctxFields,
 		"kind", kind,
 		"component", component,
 		"op", operation,
 		"req", extractArgs(req),
-		"resp", extractArgs(reply),
 		"code", code,
 		"latency", time.Since(startTime).Seconds(),
 	)
