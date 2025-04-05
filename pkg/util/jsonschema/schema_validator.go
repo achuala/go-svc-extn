@@ -107,7 +107,18 @@ func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) erro
 		}
 		return validateWithSchema(schema, v)
 	}
+	// Convert protobuf/other objects to JSON format
+	jsonBytes, err := json.Marshal(jsonObject)
+	if err != nil {
+		return fmt.Errorf("failed to marshal object to json: %w", err)
+	}
+	var jsonData any
+	err = json.Unmarshal(jsonBytes, &jsonData)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal json to interface: %w", err)
+	}
 	return validateWithSchema(schema, jsonObject)
+
 }
 
 func validateWithSchema(schema *jsonschema.Schema, jsonObject any) error {
