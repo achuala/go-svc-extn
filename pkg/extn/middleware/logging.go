@@ -60,9 +60,10 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 		}
 	}
 
+	reply, err = handler(ctx, req)
+
 	rid := getCorrelationIdFromCtx(ctx)
 
-	reply, err = handler(ctx, req)
 	if se := errors.FromError(err); se != nil {
 		code = se.Code
 		reason = se.Reason
