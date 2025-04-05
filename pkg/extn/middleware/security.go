@@ -7,6 +7,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"
+	"google.golang.org/grpc/metadata"
 )
 
 // CtxKey is a custom type for context keys
@@ -29,6 +30,15 @@ func getCorrelationIdFromCtx(ctx context.Context) string {
 		return rid
 	}
 	return idgen.NewId()
+}
+
+func getCorrelationIdFromMetadata(md metadata.MD) string {
+	if values := md.Get(string(CtxCorrelationIdKey)); len(values) > 0 {
+		return values[0]
+	} else if values := md.Get(string(CtxRequestIDKey)); len(values) > 0 {
+		return values[0]
+	}
+	return ""
 }
 
 // ServerSecurityHeaderValidator middleware validates the presence of required security headers
