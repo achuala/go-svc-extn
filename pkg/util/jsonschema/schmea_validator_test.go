@@ -61,7 +61,7 @@ func TestValidateJson(t *testing.T) {
 	}
 
 	validJson := map[string]any{
-		"name": "John Doe",
+		"name": "",
 		"age":  30,
 	}
 

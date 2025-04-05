@@ -12,22 +12,46 @@ import (
 )
 
 type JsonSchemaValidator struct {
-	schemas          map[string]*jsonschema.Schema
-	schemaUniqueKeys map[string][]string
-	nonUpdatableKeys map[string][]string
+	schemas            map[string]*jsonschema.Schema
+	schemaUniqueKeys   map[string][]string
+	schemaReadOnlyKeys map[string][]string
 }
 
 func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error) {
-	files, err := os.ReadDir(schemaDirectory)
+	// Validate and clean the base path
+	basePath := filepath.Clean(schemaDirectory)
+	basePath, err := filepath.Abs(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for schema base path: %w", err)
+	}
+	if !filepath.IsAbs(basePath) {
+		return nil, errors.New("schema base path must be absolute")
+	}
+
+	files, err := os.ReadDir(basePath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading schema directory: %w", err)
 	}
 	c := jsonschema.NewCompiler()
 	schemaUniqueKeys := make(map[string][]string, 0)
-	schemaNonUpdatableKeys := make(map[string][]string, 0)
+	schemaReadOnlyKeys := make(map[string][]string, 0)
 	var schemaIds []string
 	for _, f := range files {
-		fname := filepath.Join(schemaDirectory, f.Name())
+		// Skip non-regular files and hidden files
+		if !f.Type().IsRegular() || strings.HasPrefix(f.Name(), ".") {
+			continue
+		}
+
+		// Validate filename
+		if strings.Contains(f.Name(), "..") {
+			continue
+		}
+
+		fname := filepath.Join(basePath, f.Name())
+		cleanPath := filepath.Clean(fname)
+		if !strings.HasPrefix(cleanPath, basePath) {
+			continue
+		}
 		jsonData, err := os.ReadFile(fname)
 		if err != nil {
 			return nil, fmt.Errorf("error reading schema file: %w", err)
@@ -48,10 +72,10 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 					schemaUniqueKeys[schemaId] = uniqueKeys
 				}
 			}
-		} else if nuk, ok := jsonElems["nonUpdatableKeys"].([]any); ok {
-			if nonUpdatableKeys, err := convertInterfaceSliceToStringSlice(nuk); err == nil {
-				if len(nonUpdatableKeys) > 0 {
-					schemaNonUpdatableKeys[schemaId] = nonUpdatableKeys
+		} else if nuk, ok := jsonElems["readOnlyKeys"].([]any); ok {
+			if readOnlyKeys, err := convertInterfaceSliceToStringSlice(nuk); err == nil {
+				if len(readOnlyKeys) > 0 {
+					schemaReadOnlyKeys[schemaId] = readOnlyKeys
 				}
 			}
 		}
@@ -68,7 +92,7 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 		}
 		compiledSchemas[sid] = sch
 	}
-	return &JsonSchemaValidator{schemas: compiledSchemas, schemaUniqueKeys: schemaUniqueKeys, nonUpdatableKeys: schemaNonUpdatableKeys}, nil
+	return &JsonSchemaValidator{schemas: compiledSchemas, schemaUniqueKeys: schemaUniqueKeys, schemaReadOnlyKeys: schemaReadOnlyKeys}, nil
 }
 
 func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) error {
@@ -81,9 +105,20 @@ func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) erro
 		if err != nil {
 			return fmt.Errorf("unable to convert map to json: %w", err)
 		}
-		return schema.Validate(v)
+		return validateWithSchema(schema, v)
 	}
-	return schema.Validate(jsonObject)
+	return validateWithSchema(schema, jsonObject)
+}
+
+func validateWithSchema(schema *jsonschema.Schema, jsonObject any) error {
+	if err := schema.Validate(jsonObject); err != nil {
+		if validationErr, ok := err.(*jsonschema.ValidationError); ok {
+			validationErrors := mapSchemaValidationErrors(validationErr)
+			return errors.New(strings.Join(validationErrors, "\n"))
+		}
+		return err
+	}
+	return nil
 }
 
 // New function for validating map with generic type parameter
@@ -98,7 +133,7 @@ func ValidateMap[T any](schema *jsonschema.Schema, data map[string]T) error {
 		return fmt.Errorf("error unmarshaling json data: %w", err)
 	}
 
-	return schema.Validate(jsonObject)
+	return validateWithSchema(schema, jsonObject)
 }
 
 func (v *JsonSchemaValidator) ValidateMap(schemaId string, data map[string]any) error {
@@ -118,12 +153,20 @@ func (v *JsonSchemaValidator) GetUniqueKeys(schemaId string) ([]string, error) {
 	return schemaUniqueKeys, nil
 }
 
-func (v *JsonSchemaValidator) GetNonUpdatableKeys(schemaId string) ([]string, error) {
-	schemaNonUpdatableKeys, ok := v.nonUpdatableKeys[schemaId]
+func (v *JsonSchemaValidator) GetReadOnlyKeys(schemaId string) ([]string, error) {
+	schemaReadOnlyKeys, ok := v.schemaReadOnlyKeys[schemaId]
 	if !ok {
 		return nil, errors.New("invalid schema id " + schemaId)
 	}
-	return schemaNonUpdatableKeys, nil
+	return schemaReadOnlyKeys, nil
+}
+
+func (v *JsonSchemaValidator) GetSchema(schemaId string) (*jsonschema.Schema, error) {
+	schema, ok := v.schemas[schemaId]
+	if !ok {
+		return nil, errors.New("invalid schema id " + schemaId)
+	}
+	return schema, nil
 }
 
 func convertMapToAny(mapData map[string]string) (any, error) {
@@ -149,10 +192,48 @@ func convertInterfaceSliceToStringSlice(input []any) ([]string, error) {
 	return output, nil
 }
 
-func (v *JsonSchemaValidator) GetSchema(schemaId string) (*jsonschema.Schema, error) {
-	schema, ok := v.schemas[schemaId]
-	if !ok {
-		return nil, errors.New("invalid schema id " + schemaId)
+func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []string {
+	if validationErr == nil {
+		return nil
 	}
-	return schema, nil
+
+	errorMessagesMap := make(map[string]struct{})
+
+	// Process current error
+	if errorMessage := extractFieldError(validationErr.Error()); errorMessage != "" {
+		errorMessagesMap[errorMessage] = struct{}{}
+	}
+
+	// Process nested errors
+	for _, cause := range validationErr.Causes {
+		for _, nestedError := range mapSchemaValidationErrors(cause) {
+			errorMessagesMap[nestedError] = struct{}{}
+		}
+	}
+
+	// Convert map to slice
+	errorMessages := make([]string, 0, len(errorMessagesMap))
+	for message := range errorMessagesMap {
+		errorMessages = append(errorMessages, message)
+	}
+	return errorMessages
+}
+
+func extractFieldError(errorMessage string) string {
+	if !strings.Contains(errorMessage, "#/") {
+		return errorMessage
+	}
+
+	parts := strings.Split(errorMessage, "#/")
+	if len(parts) <= 1 {
+		return errorMessage
+	}
+
+	message := parts[1]
+	return strings.NewReplacer(
+		"properties/", "",
+		"meta/$ref/", "",
+		"items/", "",
+		"additionalProperties/", "",
+	).Replace(message)
 }
