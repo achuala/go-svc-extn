@@ -11,6 +11,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -96,19 +97,29 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 	return
 }
 
+var jsonOpts = &protojson.MarshalOptions{
+	EmitUnpopulated: false, // Skip zero values
+	UseProtoNames:   true,  // Use proto field names instead of lowerCamelCase
+	UseEnumNumbers:  false, // Use enum names instead of numbers
+}
+
 // extractArgs returns the string representation of the req
 func extractArgs(req any) string {
 	switch v := req.(type) {
 	case proto.Message:
 		clone := proto.Clone(v)
 		handleSensitiveData(clone.ProtoReflect())
-		return fmt.Sprintf("%+v", clone)
+		json, err := jsonOpts.Marshal(clone)
+		if err != nil {
+			return fmt.Sprintf("%v", clone)
+		}
+		return string(json)
 	case Redacter:
 		return v.Redact()
 	case fmt.Stringer:
 		return v.String()
 	default:
-		return fmt.Sprintf("%+v", req)
+		return fmt.Sprintf("%v", req)
 	}
 }
 
