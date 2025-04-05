@@ -15,11 +15,12 @@ type CtxKey string
 
 // Context keys for various headers
 const (
-	CtxCorrelationIdKey CtxKey = "x-correlation-id"
-	CtxSystemPeerKey    CtxKey = "x-system-peer"
-	CtxSignedHeadersKey CtxKey = "x-signed-headers"
-	CtxAuthorizationKey CtxKey = "Authorization"
-	CtxRequestIDKey     CtxKey = "x-request-id"
+	CtxCorrelationIdKey   CtxKey = "x-correlation-id"
+	CtxSystemPeerKey      CtxKey = "x-system-peer"
+	CtxSignedHeadersKey   CtxKey = "x-signed-headers"
+	CtxAuthorizationKey   CtxKey = "Authorization"
+	CtxRequestIDKey       CtxKey = "x-request-id"
+	CtxMdCorrelationIdKey CtxKey = "x-md-correlation-id"
 )
 
 // getCorrelationIdFromCtx retrieves the correlation ID from the context or generates a new one
@@ -81,6 +82,7 @@ func ClientCorrelationIdInjector() middleware.Middleware {
 			if tr, ok := transport.FromClientContext(ctx); ok {
 				correlationId := getCorrelationIdFromCtx(ctx)
 				tr.RequestHeader().Set(string(CtxCorrelationIdKey), correlationId)
+				tr.RequestHeader().Set(string(CtxMdCorrelationIdKey), correlationId)
 			}
 			return handler(ctx, req)
 		}
