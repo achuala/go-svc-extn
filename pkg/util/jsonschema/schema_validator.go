@@ -14,6 +14,7 @@ import (
 type JsonSchemaValidator struct {
 	schemas          map[string]*jsonschema.Schema
 	schemaUniqueKeys map[string][]string
+	nonUpdatableKeys map[string][]string
 }
 
 func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error) {
@@ -23,6 +24,7 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 	}
 	c := jsonschema.NewCompiler()
 	schemaUniqueKeys := make(map[string][]string, 0)
+	schemaNonUpdatableKeys := make(map[string][]string, 0)
 	var schemaIds []string
 	for _, f := range files {
 		fname := filepath.Join(schemaDirectory, f.Name())
@@ -46,6 +48,12 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 					schemaUniqueKeys[schemaId] = uniqueKeys
 				}
 			}
+		} else if nuk, ok := jsonElems["nonUpdatableKeys"].([]any); ok {
+			if nonUpdatableKeys, err := convertInterfaceSliceToStringSlice(nuk); err == nil {
+				if len(nonUpdatableKeys) > 0 {
+					schemaNonUpdatableKeys[schemaId] = nonUpdatableKeys
+				}
+			}
 		}
 		if err := c.AddResource(schemaId, strings.NewReader(string(jsonData))); err != nil {
 			return nil, fmt.Errorf("unable to add schema: %w", err)
@@ -60,7 +68,7 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 		}
 		compiledSchemas[sid] = sch
 	}
-	return &JsonSchemaValidator{schemas: compiledSchemas, schemaUniqueKeys: schemaUniqueKeys}, nil
+	return &JsonSchemaValidator{schemas: compiledSchemas, schemaUniqueKeys: schemaUniqueKeys, nonUpdatableKeys: schemaNonUpdatableKeys}, nil
 }
 
 func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) error {
@@ -103,11 +111,19 @@ func (v *JsonSchemaValidator) ValidateMap(schemaId string, data map[string]any) 
 }
 
 func (v *JsonSchemaValidator) GetUniqueKeys(schemaId string) ([]string, error) {
-	schemaUniqueKeys := v.schemaUniqueKeys[schemaId]
-	if schemaUniqueKeys == nil {
+	schemaUniqueKeys, ok := v.schemaUniqueKeys[schemaId]
+	if !ok {
 		return nil, errors.New("invalid schema id " + schemaId)
 	}
 	return schemaUniqueKeys, nil
+}
+
+func (v *JsonSchemaValidator) GetNonUpdatableKeys(schemaId string) ([]string, error) {
+	schemaNonUpdatableKeys, ok := v.nonUpdatableKeys[schemaId]
+	if !ok {
+		return nil, errors.New("invalid schema id " + schemaId)
+	}
+	return schemaNonUpdatableKeys, nil
 }
 
 func convertMapToAny(mapData map[string]string) (any, error) {
