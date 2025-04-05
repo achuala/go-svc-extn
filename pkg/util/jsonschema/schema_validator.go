@@ -148,3 +148,11 @@ func convertInterfaceSliceToStringSlice(input []any) ([]string, error) {
 	}
 	return output, nil
 }
+
+func (v *JsonSchemaValidator) GetSchema(schemaId string) (*jsonschema.Schema, error) {
+	schema, ok := v.schemas[schemaId]
+	if !ok {
+		return nil, errors.New("invalid schema id " + schemaId)
+	}
+	return schema, nil
+}
