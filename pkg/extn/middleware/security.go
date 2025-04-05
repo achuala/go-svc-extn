@@ -26,9 +26,9 @@ const (
 
 // getCorrelationIdFromCtx retrieves the correlation ID from the context or generates a new one
 func getCorrelationIdFromCtx(ctx context.Context) string {
-	if correlationId, ok := ctx.Value(CtxCorrelationIdKey).(string); ok {
-		return correlationId
-	} else if rid, ok := ctx.Value(CtxRequestIDKey).(string); ok {
+	if rid, ok := ctx.Value(CtxRequestIDKey).(string); ok {
+		return rid
+	} else if rid, ok := ctx.Value(CtxCorrelationIdKey).(string); ok {
 		return rid
 	}
 	return idgen.NewId()
