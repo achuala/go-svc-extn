@@ -21,7 +21,7 @@ const (
 	CtxAuthorizationKey   CtxKey = "Authorization"
 	CtxRequestIDKey       CtxKey = "rid"
 	CtxMdCorrelationIdKey CtxKey = "x-md-global-correlation-id"
-	CtxMdRequestIdKey     CtxKey = "x-md-global-request-id"
+	CtxMdRequestIdKey     CtxKey = "x-md-global-rid"
 )
 
 // getCorrelationIdFromCtx retrieves the correlation ID from the context or generates a new one
@@ -30,17 +30,6 @@ func getCorrelationIdFromCtx(ctx context.Context) string {
 		return correlationId
 	} else if rid, ok := ctx.Value(CtxRequestIDKey).(string); ok {
 		return rid
-	}
-	return idgen.NewId()
-}
-
-func getCorrelationIdFromMetadata(ctx context.Context) string {
-	if md, ok := metadata.FromServerContext(ctx); ok {
-		if values := md.Get(string(CtxMdCorrelationIdKey)); len(values) > 0 {
-			return string(values[0])
-		} else if values := md.Get(string(CtxMdRequestIdKey)); len(values) > 0 {
-			return string(values[0])
-		}
 	}
 	return idgen.NewId()
 }
@@ -85,12 +74,8 @@ func ServerCorrelationIdInjector() middleware.Middleware {
 func ClientCorrelationIdInjector() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (reply any, err error) {
-			if tr, ok := transport.FromClientContext(ctx); ok {
-				correlationId := getCorrelationIdFromCtx(ctx)
-				tr.RequestHeader().Set(string(CtxCorrelationIdKey), correlationId)
-				tr.RequestHeader().Set(string(CtxMdCorrelationIdKey), correlationId)
-				ctx = metadata.AppendToClientContext(ctx, string(CtxMdCorrelationIdKey), correlationId)
-			}
+			correlationId := getCorrelationIdFromCtx(ctx)
+			ctx = metadata.AppendToClientContext(ctx, string(CtxMdCorrelationIdKey), correlationId)
 			return handler(ctx, req)
 		}
 	}

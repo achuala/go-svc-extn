@@ -11,7 +11,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
@@ -45,7 +44,6 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 		reason    string
 		operation string
 		component string
-		rid       string
 	)
 	startTime := time.Now()
 
@@ -54,36 +52,15 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 		if info, ok := transport.FromServerContext(ctx); ok {
 			component = info.Kind().String()
 			operation = info.Operation()
-
-			// Handle both gRPC and HTTP in a consistent way
-			if component == "grpc" {
-				if md, ok := metadata.FromIncomingContext(ctx); ok {
-					rid = getCorrelationIdFromMetadata(md)
-				}
-			} else if component == "http" {
-				rid = info.RequestHeader().Get(string(CtxCorrelationIdKey))
-			}
 		}
 	} else if kind == "client" {
 		if info, ok := transport.FromClientContext(ctx); ok {
 			component = info.Kind().String()
 			operation = info.Operation()
-
-			// Handle both gRPC and HTTP in a consistent way
-			if component == "grpc" {
-				if md, ok := metadata.FromOutgoingContext(ctx); ok {
-					rid = getCorrelationIdFromMetadata(md)
-				}
-			} else if component == "http" {
-				rid = info.RequestHeader().Get(string(CtxCorrelationIdKey))
-			}
 		}
 	}
 
-	// If no correlation ID found in transport, try context
-	if rid == "" {
-		rid = getCorrelationIdFromCtx(ctx)
-	}
+	rid := getCorrelationIdFromCtx(ctx)
 
 	reply, err = handler(ctx, req)
 	if se := errors.FromError(err); se != nil {
