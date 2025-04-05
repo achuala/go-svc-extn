@@ -117,7 +117,7 @@ func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) erro
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal json to interface: %w", err)
 	}
-	return validateWithSchema(schema, jsonObject)
+	return validateWithSchema(schema, jsonData)
 
 }
 
