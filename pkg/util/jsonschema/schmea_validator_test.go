@@ -65,18 +65,24 @@ func TestValidateJson(t *testing.T) {
 		"age":  30,
 	}
 
-	err = validator.ValidateJson("http://example.com/schema1", validJson)
+	violations, err := validator.ValidateJson("http://example.com/schema1", validJson)
 	if err != nil {
 		t.Errorf("expected valid JSON to pass validation, got error: %v", err)
 	}
-
-	invalidJson := map[string]any{
-		"age": 30,
+	if len(violations) > 0 {
+		t.Errorf("expected valid JSON to pass validation, got violations: %v", violations)
 	}
 
-	err = validator.ValidateJson("http://example.com/schema1", invalidJson)
+	invalidJson := map[string]any{
+		"name1": "John Doe",
+		"age":   "30",
+	}
+	violations, err = validator.ValidateJson("http://example.com/schema1", invalidJson)
 	if err == nil {
 		t.Errorf("expected invalid JSON to fail validation, got no error")
+	}
+	if len(violations) == 0 {
+		t.Errorf("expected invalid JSON to fail validation, got no violations")
 	}
 }
 
@@ -94,18 +100,24 @@ func TestValidateMap(t *testing.T) {
 		"age":  "30",
 	}
 
-	err = validator.ValidateMap("http://example.com/schema1", validMap)
+	violations, err := validator.ValidateMap("http://example.com/schema1", validMap)
 	if err != nil {
 		t.Errorf("expected valid map to pass validation, got error: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Errorf("expected valid map to pass validation, got violations: %v", violations)
 	}
 
 	invalidMap := map[string]any{
 		"age": "30",
 	}
 
-	err = validator.ValidateMap("http://example.com/schema1", invalidMap)
+	violations, err = validator.ValidateMap("http://example.com/schema1", invalidMap)
 	if err == nil {
 		t.Errorf("expected invalid map to fail validation, got no error")
+	}
+	if len(violations) == 0 {
+		t.Errorf("expected invalid map to fail validation, got no violations")
 	}
 }
 

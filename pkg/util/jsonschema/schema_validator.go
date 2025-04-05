@@ -95,62 +95,62 @@ func NewJsonSchemaValidator(schemaDirectory string) (*JsonSchemaValidator, error
 	return &JsonSchemaValidator{schemas: compiledSchemas, schemaUniqueKeys: schemaUniqueKeys, schemaReadOnlyKeys: schemaReadOnlyKeys}, nil
 }
 
-func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) error {
+func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) ([]*SchemaFieldViolation, error) {
 	schema := v.schemas[schemaId]
 	if schema == nil {
-		return errors.New("invalid schema id " + schemaId)
+		return nil, errors.New("invalid schema id " + schemaId)
 	}
 	if mapData, ok := jsonObject.(map[string]string); ok {
 		v, err := convertMapToAny(mapData)
 		if err != nil {
-			return fmt.Errorf("unable to convert map to json: %w", err)
+			return nil, fmt.Errorf("unable to convert map to json: %w", err)
 		}
 		return validateWithSchema(schema, v)
 	}
 	// Convert protobuf/other objects to JSON format
 	jsonBytes, err := json.Marshal(jsonObject)
 	if err != nil {
-		return fmt.Errorf("failed to marshal object to json: %w", err)
+		return nil, fmt.Errorf("failed to marshal object to json: %w", err)
 	}
 	var jsonData any
 	err = json.Unmarshal(jsonBytes, &jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal json to interface: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal json to interface: %w", err)
 	}
 	return validateWithSchema(schema, jsonData)
 
 }
 
-func validateWithSchema(schema *jsonschema.Schema, jsonObject any) error {
+func validateWithSchema(schema *jsonschema.Schema, jsonObject any) ([]*SchemaFieldViolation, error) {
 	if err := schema.Validate(jsonObject); err != nil {
 		if validationErr, ok := err.(*jsonschema.ValidationError); ok {
 			validationErrors := mapSchemaValidationErrors(validationErr)
-			return errors.New(strings.Join(validationErrors, "\n"))
+			return validationErrors, errors.New("validation errors")
 		}
-		return err
+		return nil, err
 	}
-	return nil
+	return nil, nil
 }
 
 // New function for validating map with generic type parameter
-func ValidateMap[T any](schema *jsonschema.Schema, data map[string]T) error {
+func ValidateMap[T any](schema *jsonschema.Schema, data map[string]T) ([]*SchemaFieldViolation, error) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("error marshaling data to json: %w", err)
+		return nil, fmt.Errorf("error marshaling data to json: %w", err)
 	}
 
 	var jsonObject any
 	if err := json.Unmarshal(jsonData, &jsonObject); err != nil {
-		return fmt.Errorf("error unmarshaling json data: %w", err)
+		return nil, fmt.Errorf("error unmarshaling json data: %w", err)
 	}
 
 	return validateWithSchema(schema, jsonObject)
 }
 
-func (v *JsonSchemaValidator) ValidateMap(schemaId string, data map[string]any) error {
+func (v *JsonSchemaValidator) ValidateMap(schemaId string, data map[string]any) ([]*SchemaFieldViolation, error) {
 	schema := v.schemas[schemaId]
 	if schema == nil {
-		return errors.New("invalid schema id " + schemaId)
+		return nil, errors.New("invalid schema id " + schemaId)
 	}
 
 	return ValidateMap(schema, data)
@@ -203,48 +203,78 @@ func convertInterfaceSliceToStringSlice(input []any) ([]string, error) {
 	return output, nil
 }
 
-func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []string {
+type SchemaFieldViolation struct {
+	Field    string
+	Messages []string
+}
+
+func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*SchemaFieldViolation {
 	if validationErr == nil {
 		return nil
 	}
 
-	errorMessagesMap := make(map[string]struct{})
+	fieldErrorMap := make(map[string][]string)
 
-	// Process current error
-	if errorMessage := extractFieldError(validationErr.Error()); errorMessage != "" {
-		errorMessagesMap[errorMessage] = struct{}{}
-	}
-
-	// Process nested errors
+	// Only process causes as they contain the detailed errors
 	for _, cause := range validationErr.Causes {
-		for _, nestedError := range mapSchemaValidationErrors(cause) {
-			errorMessagesMap[nestedError] = struct{}{}
+		if field, msg := extractFieldAndError(cause.Error()); field != "" {
+			// Optionally deduplicate messages for the same field
+			if !contains(fieldErrorMap[field], msg) {
+				fieldErrorMap[field] = append(fieldErrorMap[field], msg)
+			}
 		}
 	}
 
-	// Convert map to slice
-	errorMessages := make([]string, 0, len(errorMessagesMap))
-	for message := range errorMessagesMap {
-		errorMessages = append(errorMessages, message)
+	// If no causes but has error, use the main error
+	if len(validationErr.Causes) == 0 {
+		if field, msg := extractFieldAndError(validationErr.Error()); field != "" {
+			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
+		}
 	}
-	return errorMessages
+
+	fieldViolations := make([]*SchemaFieldViolation, 0, len(fieldErrorMap))
+	for field, messages := range fieldErrorMap {
+		fieldViolations = append(fieldViolations, &SchemaFieldViolation{
+			Field:    field,
+			Messages: messages,
+		})
+	}
+
+	return fieldViolations
 }
 
-func extractFieldError(errorMessage string) string {
+func contains(messages []string, msg string) bool {
+	for _, m := range messages {
+		if m == msg {
+			return true
+		}
+	}
+	return false
+}
+
+func extractFieldAndError(errorMessage string) (field, message string) {
 	if !strings.Contains(errorMessage, "#/") {
-		return errorMessage
+		return "", errorMessage
 	}
 
 	parts := strings.Split(errorMessage, "#/")
 	if len(parts) <= 1 {
-		return errorMessage
+		return "", errorMessage
 	}
 
-	message := parts[1]
-	return strings.NewReplacer(
+	fieldPath := strings.NewReplacer(
 		"properties/", "",
 		"meta/$ref/", "",
 		"items/", "",
 		"additionalProperties/", "",
-	).Replace(message)
+	).Replace(parts[1])
+
+	// Split into field and message if possible
+	if idx := strings.Index(fieldPath, ":"); idx != -1 {
+		field = fieldPath[:idx]
+		message = strings.TrimSpace(fieldPath[idx+1:])
+		return field, message
+	}
+
+	return fieldPath, parts[0]
 }
