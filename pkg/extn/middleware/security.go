@@ -75,7 +75,11 @@ func ClientCorrelationIdInjector() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (reply any, err error) {
 			correlationId := getCorrelationIdFromCtx(ctx)
-			ctx = metadata.AppendToClientContext(ctx, string(CtxMdCorrelationIdKey), correlationId)
+			if tr, ok := transport.FromClientContext(ctx); ok {
+				tr.RequestHeader().Set(string(CtxCorrelationIdKey), correlationId)
+				tr.RequestHeader().Set(string(CtxRequestIDKey), correlationId)
+			}
+			ctx = metadata.AppendToClientContext(ctx, string(CtxMdCorrelationIdKey), correlationId, string(CtxMdRequestIdKey), correlationId)
 			return handler(ctx, req)
 		}
 	}
