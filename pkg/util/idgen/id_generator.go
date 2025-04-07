@@ -95,7 +95,11 @@ func NewId() string {
 
 // Generates a new ID, based on uuid, prefix is the prefix of the id.
 func NewIdWithPrefix(prefix string) string {
-	return prefix + "-" + strings.Replace(uuid.NewString(), "-", "", -1)
+	id, err := uuid.NewV7()
+	if err != nil {
+		return ""
+	}
+	return prefix + "-" + strings.Replace(id.String(), "-", "", -1)
 }
 
 func NewUUID() string {
