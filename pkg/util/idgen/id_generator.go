@@ -88,9 +88,18 @@ func DecodeToUint64(s string) uint64 {
 	return binary.BigEndian.Uint64(base58.Decode(s))
 }
 
-// Generates a new ID, based on short UUID.
+// Generates a new ID, based on short UUID. and uses base58 encoding.
 func NewId() string {
 	return shortuuid.New()
+}
+
+// Generates a new ID, based on uuid, prefix is the prefix of the id.
+func NewIdWithPrefix(prefix string) string {
+	return prefix + "-" + strings.Replace(uuid.NewString(), "-", "", -1)
+}
+
+func NewUUID() string {
+	return uuid.NewString()
 }
 
 // Generates a new ID, based on snowflake implementation.
