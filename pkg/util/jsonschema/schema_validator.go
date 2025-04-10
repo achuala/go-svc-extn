@@ -219,13 +219,12 @@ func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*Sch
 	for _, cause := range validationErr.Causes {
 		field := cause.InstanceLocation
 		msg := cause.Message
-		if msg == "" {
-			for _, internalCause := range cause.Causes {
-				field = internalCause.InstanceLocation
-				msg = internalCause.Message
-				fieldErrorMap[field] = append(fieldErrorMap[field], msg)
-			}
-		} else {
+		if msg != "" {
+			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
+		}
+		for _, internalCause := range cause.Causes {
+			field = internalCause.InstanceLocation
+			msg = internalCause.Message
 			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
 		}
 	}
