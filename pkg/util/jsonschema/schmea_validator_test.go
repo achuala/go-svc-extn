@@ -14,7 +14,7 @@ func createTestSchemaFiles(dir string, t *testing.T) {
 			"id": "http://example.com/schema1",
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
+				"name": {"type": "string", "pattern": "^[a-zA-Z]+$", "minLength": 3, "maxLength": 10},
 				"age": {"type": "integer"}
 			},
 			"required": ["name"]
@@ -61,7 +61,7 @@ func TestValidateJson(t *testing.T) {
 	}
 
 	validJson := map[string]any{
-		"name": "",
+		"name": "John Doe",
 		"age":  30,
 	}
 
@@ -74,8 +74,8 @@ func TestValidateJson(t *testing.T) {
 	}
 
 	invalidJson := map[string]any{
-		"name1": "John Doe",
-		"age":   "30",
+		"name": "John Doe#$%#$%#$%#$%#$%#$sdlfmslkfmdslkdsflsdkddfglkdflgjdflgkjdflkgjdflkgjdflkgjdfklfgjkldjfgkl",
+		"age":  "30",
 	}
 	violations, err = validator.ValidateJson("http://example.com/schema1", invalidJson)
 	if err == nil {

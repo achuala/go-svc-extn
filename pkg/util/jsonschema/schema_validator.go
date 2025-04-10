@@ -215,13 +215,18 @@ func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*Sch
 
 	fieldErrorMap := make(map[string][]string)
 
-	// Only process causes as they contain the detailed errors
+	// Process all causes to collect detailed errors
 	for _, cause := range validationErr.Causes {
-		if field, msg := extractFieldAndError(cause.Error()); field != "" {
-			// Optionally deduplicate messages for the same field
-			if !contains(fieldErrorMap[field], msg) {
+		field := cause.InstanceLocation
+		msg := cause.Message
+		if msg == "" {
+			for _, internalCause := range cause.Causes {
+				field = internalCause.InstanceLocation
+				msg = internalCause.Message
 				fieldErrorMap[field] = append(fieldErrorMap[field], msg)
 			}
+		} else {
+			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
 		}
 	}
 
@@ -241,15 +246,6 @@ func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*Sch
 	}
 
 	return fieldViolations
-}
-
-func contains(messages []string, msg string) bool {
-	for _, m := range messages {
-		if m == msg {
-			return true
-		}
-	}
-	return false
 }
 
 func extractFieldAndError(errorMessage string) (field, message string) {
