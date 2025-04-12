@@ -38,7 +38,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/go-crypt/x v0.3.6 // indirect
+	github.com/go-crypt/x v0.4.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
