@@ -222,11 +222,7 @@ func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*Sch
 		if msg != "" {
 			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
 		}
-		for _, internalCause := range cause.Causes {
-			field = internalCause.InstanceLocation
-			msg = internalCause.Message
-			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
-		}
+		fieldErrorMap = mapInteralCauses(cause.Causes, fieldErrorMap)
 	}
 
 	// If no causes but has error, use the main error
@@ -244,6 +240,18 @@ func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*Sch
 		})
 	}
 
+	return fieldViolations
+}
+
+func mapInteralCauses(causes []*jsonschema.ValidationError, fieldViolations map[string][]string) map[string][]string {
+	for _, internalCause := range causes {
+		field := internalCause.InstanceLocation
+		msg := internalCause.Message
+		fieldViolations[field] = append(fieldViolations[field], msg)
+		if len(internalCause.Causes) > 0 {
+			fieldViolations = mapInteralCauses(internalCause.Causes, fieldViolations)
+		}
+	}
 	return fieldViolations
 }
 
