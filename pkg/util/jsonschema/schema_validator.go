@@ -121,15 +121,143 @@ func (v *JsonSchemaValidator) ValidateJson(schemaId string, jsonObject any) ([]*
 
 }
 
+// SchemaFieldViolation represents a validation error for a specific field in the JSON schema.
+// It contains the field path and a list of error messages associated with that field.
+type SchemaFieldViolation struct {
+	Field    string   // The path to the field that failed validation
+	Messages []string // List of validation error messages for this field
+}
+
+// validateWithSchema validates a JSON object against a JSON schema.
+// It returns a list of field violations if validation fails, or nil if validation succeeds.
+// The error returned contains the original validation error for debugging purposes.
+//
+// Parameters:
+//   - schema: The JSON schema to validate against
+//   - jsonObject: The JSON object to validate
+//
+// Returns:
+//   - []*SchemaFieldViolation: List of field violations if validation fails
+//   - error: The original validation error if validation fails, nil if validation succeeds
 func validateWithSchema(schema *jsonschema.Schema, jsonObject any) ([]*SchemaFieldViolation, error) {
 	if err := schema.Validate(jsonObject); err != nil {
 		if validationErr, ok := err.(*jsonschema.ValidationError); ok {
 			validationErrors := mapSchemaValidationErrors(validationErr)
-			return validationErrors, errors.New("validation errors")
+			if len(validationErrors) > 0 {
+				return validationErrors, fmt.Errorf("validation failed: %w", err)
+			}
 		}
 		return nil, err
 	}
 	return nil, nil
+}
+
+// mapSchemaValidationErrors processes a ValidationError and converts it into a list of field violations.
+// It handles both the main validation error and its nested causes, ensuring all validation errors are captured.
+//
+// Parameters:
+//   - validationErr: The validation error to process
+//
+// Returns:
+//   - []*SchemaFieldViolation: List of field violations extracted from the validation error
+func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*SchemaFieldViolation {
+	if validationErr == nil {
+		return nil
+	}
+
+	fieldErrorMap := make(map[string][]string)
+
+	// Process all causes to collect detailed errors
+	for _, cause := range validationErr.Causes {
+		processValidationCause(cause, fieldErrorMap)
+	}
+
+	// Process the main error if it has a message
+	if validationErr.Message != "" {
+		field := normalizeFieldPath(validationErr.InstanceLocation)
+		if field != "" {
+			fieldErrorMap[field] = append(fieldErrorMap[field], validationErr.Message)
+		}
+	}
+
+	fieldViolations := make([]*SchemaFieldViolation, 0, len(fieldErrorMap))
+	for field, messages := range fieldErrorMap {
+		fieldViolations = append(fieldViolations, &SchemaFieldViolation{
+			Field:    field,
+			Messages: messages,
+		})
+	}
+
+	return fieldViolations
+}
+
+// processValidationCause processes a single validation error cause and its nested causes.
+// It uses a queue-based approach to handle nested causes iteratively, preventing stack overflow
+// with deeply nested validation errors.
+//
+// Parameters:
+//   - cause: The validation error cause to process
+//   - fieldErrorMap: Map to store field violations
+func processValidationCause(cause *jsonschema.ValidationError, fieldErrorMap map[string][]string) {
+	if cause == nil {
+		return
+	}
+
+	// Process current cause
+	if cause.Message != "" {
+		field := normalizeFieldPath(cause.InstanceLocation)
+		if field != "" {
+			fieldErrorMap[field] = append(fieldErrorMap[field], cause.Message)
+		}
+	}
+
+	// Process nested causes using a queue-based approach
+	causesQueue := cause.Causes
+	for len(causesQueue) > 0 {
+		current := causesQueue[0]
+		causesQueue = causesQueue[1:]
+
+		if current.Message != "" {
+			field := normalizeFieldPath(current.InstanceLocation)
+			if field != "" {
+				fieldErrorMap[field] = append(fieldErrorMap[field], current.Message)
+			}
+		}
+
+		// Add any nested causes to the queue
+		if len(current.Causes) > 0 {
+			causesQueue = append(causesQueue, current.Causes...)
+		}
+	}
+}
+
+// normalizeFieldPath normalizes a JSON Schema field path by removing common prefixes and formatting.
+// It makes field paths more readable and consistent across different types of validation errors.
+//
+// Parameters:
+//   - path: The original field path from the validation error
+//
+// Returns:
+//   - string: The normalized field path
+func normalizeFieldPath(path string) string {
+	if path == "" {
+		return ""
+	}
+
+	// Remove common JSON Schema path prefixes
+	path = strings.NewReplacer(
+		"properties/", "",
+		"meta/$ref/", "",
+		"items/", "",
+		"additionalProperties/", "",
+	).Replace(path)
+
+	// Remove leading slash if present
+	if strings.HasPrefix(path, "/") {
+		path = path[1:]
+	}
+
+	return path
 }
 
 // New function for validating map with generic type parameter
@@ -201,83 +329,4 @@ func convertInterfaceSliceToStringSlice(input []any) ([]string, error) {
 		output[i] = str
 	}
 	return output, nil
-}
-
-type SchemaFieldViolation struct {
-	Field    string
-	Messages []string
-}
-
-func mapSchemaValidationErrors(validationErr *jsonschema.ValidationError) []*SchemaFieldViolation {
-	if validationErr == nil {
-		return nil
-	}
-
-	fieldErrorMap := make(map[string][]string)
-
-	// Process all causes to collect detailed errors
-	for _, cause := range validationErr.Causes {
-		field := cause.InstanceLocation
-		msg := cause.Message
-		if msg != "" {
-			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
-		}
-		fieldErrorMap = mapInteralCauses(cause.Causes, fieldErrorMap)
-	}
-
-	// If no causes but has error, use the main error
-	if len(validationErr.Causes) == 0 {
-		if field, msg := extractFieldAndError(validationErr.Error()); field != "" {
-			fieldErrorMap[field] = append(fieldErrorMap[field], msg)
-		}
-	}
-
-	fieldViolations := make([]*SchemaFieldViolation, 0, len(fieldErrorMap))
-	for field, messages := range fieldErrorMap {
-		fieldViolations = append(fieldViolations, &SchemaFieldViolation{
-			Field:    field,
-			Messages: messages,
-		})
-	}
-
-	return fieldViolations
-}
-
-func mapInteralCauses(causes []*jsonschema.ValidationError, fieldViolations map[string][]string) map[string][]string {
-	for _, internalCause := range causes {
-		field := internalCause.InstanceLocation
-		msg := internalCause.Message
-		fieldViolations[field] = append(fieldViolations[field], msg)
-		if len(internalCause.Causes) > 0 {
-			fieldViolations = mapInteralCauses(internalCause.Causes, fieldViolations)
-		}
-	}
-	return fieldViolations
-}
-
-func extractFieldAndError(errorMessage string) (field, message string) {
-	if !strings.Contains(errorMessage, "#/") {
-		return "", errorMessage
-	}
-
-	parts := strings.Split(errorMessage, "#/")
-	if len(parts) <= 1 {
-		return "", errorMessage
-	}
-
-	fieldPath := strings.NewReplacer(
-		"properties/", "",
-		"meta/$ref/", "",
-		"items/", "",
-		"additionalProperties/", "",
-	).Replace(parts[1])
-
-	// Split into field and message if possible
-	if idx := strings.Index(fieldPath, ":"); idx != -1 {
-		field = fieldPath[:idx]
-		message = strings.TrimSpace(fieldPath[idx+1:])
-		return field, message
-	}
-
-	return fieldPath, parts[0]
 }
