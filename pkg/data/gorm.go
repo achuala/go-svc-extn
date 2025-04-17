@@ -80,7 +80,9 @@ func NewGorm(dsn string) (*gorm.DB, error) {
 	return db, nil
 }
 func NewGormWithOptions(dsn string, logger log.Logger, opts GormOptions) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: opts.SkipDefaultTransaction, Logger: NewGormLogger(logger)})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: opts.SkipDefaultTransaction,
+		DisableAutomaticPing: true,
+		Logger:               NewGormLogger(logger)})
 	if err != nil {
 		return nil, err
 	}
