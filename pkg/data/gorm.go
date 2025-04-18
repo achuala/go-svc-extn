@@ -62,23 +62,16 @@ func NewData(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
 
 // NewDB gorm Connecting to a Database
 func NewGorm(dsn string) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: true})
-	if err != nil {
-		return nil, err
+	opts := GormOptions{
+		SkipDefaultTransaction: true,
+		MaxIdleConns:           1,
+		MaxOpenConns:           10,
+		ConnMaxIdleTime:        15 * time.Minute,
+		ConnMaxLifetime:        8 * time.Hour,
 	}
-	if err := db.Use(tracing.NewPlugin(tracing.WithoutMetrics())); err != nil {
-		return nil, err
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
-	sqlDB.SetMaxIdleConns(1)
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
-	sqlDB.SetConnMaxLifetime(8 * time.Hour)
-	return db, nil
+	return NewGormWithOptions(dsn, log.DefaultLogger, opts)
 }
+
 func NewGormWithOptions(dsn string, logger log.Logger, opts GormOptions) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: opts.SkipDefaultTransaction,
 		DisableAutomaticPing: true,
