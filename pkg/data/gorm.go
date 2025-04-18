@@ -7,7 +7,6 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 // Data .
@@ -77,9 +76,6 @@ func NewGormWithOptions(dsn string, logger log.Logger, opts GormOptions) (*gorm.
 		DisableAutomaticPing: true,
 		Logger:               NewGormLogger(logger)})
 	if err != nil {
-		return nil, err
-	}
-	if err := db.Use(tracing.NewPlugin(tracing.WithoutMetrics())); err != nil {
 		return nil, err
 	}
 	sqlDB, err := db.DB()
