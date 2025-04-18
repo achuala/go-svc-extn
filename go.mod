@@ -11,12 +11,12 @@ require (
 	github.com/cloudevents/sdk-go v1.2.0
 	github.com/dchest/siphash v1.2.3
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/go-crypt/crypt v0.3.5
+	github.com/go-crypt/crypt v0.4.0
 	github.com/go-kratos/kratos/v2 v2.8.4
 	github.com/google/uuid v1.6.0
 	github.com/inhies/go-bytesize v0.0.0-20220417184213-4913239db9cf
 	github.com/lithammer/shortuuid/v4 v4.2.0
-	github.com/nats-io/nats.go v1.41.1
+	github.com/nats-io/nats.go v1.41.2
 	github.com/pkg/errors v0.9.1
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/sony/sonyflake v1.2.0
@@ -57,7 +57,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lightstep/tracecontext.go v0.0.0-20181129014701-1757c391b1ac // indirect
 	github.com/lithammer/shortuuid/v3 v3.0.7 // indirect
-	github.com/nats-io/nkeys v0.4.10 // indirect
+	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

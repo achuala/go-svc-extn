@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,9 +26,30 @@ type RemoteCacheValkey struct {
 // NewRemoteCacheValkey creates a new instance of RemoteCacheValkey.
 // It initializes the Valkey client with the provided configuration.
 func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, error, func()) {
-	vkClientOnce.Do(func() {
-		vkClient, vkClientErr = valkey.NewClient(valkey.ClientOption{InitAddress: []string{cacheCfg.RemoteCacheAddr}})
-	})
+	if !strings.HasPrefix(cacheCfg.RemoteCacheAddr, "redis://") {
+		cacheCfg.RemoteCacheAddr = "redis://" + cacheCfg.RemoteCacheAddr
+	}
+	if cacheCfg.Mode == "cluster" {
+		vkClientOnce.Do(func() {
+			// Connect to a cluster "redis://127.0.0.1:7001?addr=127.0.0.1:7002&addr=127.0.0.1:7003"
+			clusterClientOptions := valkey.MustParseURL(cacheCfg.RemoteCacheAddr)
+			clusterClientOptions.ShuffleInit = true
+			clusterClientOptions.SendToReplicas = func(cmd valkey.Completed) bool {
+				return cmd.IsReadOnly()
+			}
+			vkClient, vkClientErr = valkey.NewClient(clusterClientOptions)
+		})
+	} else if cacheCfg.Mode == "sentinel" {
+		vkClientOnce.Do(func() {
+			// // connect to a valkey sentinel redis://127.0.0.1:26379/0?master_set=my_master"
+			vkClient, vkClientErr = valkey.NewClient(valkey.MustParseURL(cacheCfg.RemoteCacheAddr))
+		})
+	} else {
+		// Standalone mode
+		vkClientOnce.Do(func() {
+			vkClient, vkClientErr = valkey.NewClient(valkey.MustParseURL(cacheCfg.RemoteCacheAddr))
+		})
+	}
 
 	if vkClientErr != nil {
 		return nil, vkClientErr, nil

@@ -24,7 +24,7 @@ type Cache interface {
 
 // CacheConfig is the configuration for the cache.
 type CacheConfig struct {
-	// local/remote, default is local
+	// local/remote/cluster, default is local
 	Mode            string
 	CacheName       string
 	RemoteCacheAddr string
