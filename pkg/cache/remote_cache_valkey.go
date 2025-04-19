@@ -46,8 +46,12 @@ func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, error, fun
 		})
 	} else {
 		// Standalone mode
+		clientOptions := valkey.MustParseURL(cacheCfg.RemoteCacheAddr)
+		clientOptions.SendToReplicas = func(cmd valkey.Completed) bool {
+			return cmd.IsReadOnly()
+		}
 		vkClientOnce.Do(func() {
-			vkClient, vkClientErr = valkey.NewClient(valkey.MustParseURL(cacheCfg.RemoteCacheAddr))
+			vkClient, vkClientErr = valkey.NewClient(clientOptions)
 		})
 	}
 
