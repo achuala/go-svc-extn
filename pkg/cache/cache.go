@@ -37,8 +37,8 @@ type CacheConfig struct {
 
 // NewCache creates a new cache instance based on the provided configuration.
 func NewCache(cacheCfg *CacheConfig) (Cache, error, func()) {
-	if cacheCfg.Mode == "remote" {
-		return NewRemoteCacheValkey(cacheCfg)
+	if cacheCfg.Mode == "local" {
+	   return NewLocalCacheRistretto(cacheCfg)	
 	}
-	return NewLocalCacheRistretto(cacheCfg)
+	return NewRemoteCacheValkey(cacheCfg)
 }
