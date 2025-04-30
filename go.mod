@@ -4,10 +4,10 @@ go 1.24.1
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.6-20250425153114-8976f5be98c1.1
+	buf.build/go/protovalidate v0.11.0
 	github.com/ThreeDotsLabs/watermill v1.4.6
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.3
 	github.com/btcsuite/btcutil v1.0.2
-	github.com/bufbuild/protovalidate-go v0.10.0
 	github.com/cloudevents/sdk-go v1.2.0
 	github.com/dchest/siphash v1.2.3
 	github.com/dgraph-io/ristretto v0.2.0
