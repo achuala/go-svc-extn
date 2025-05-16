@@ -30,14 +30,14 @@ func TestRemoteCache(t *testing.T) {
 		Mode:            "remote",
 		CacheName:       "test",
 		DefaultTTL:      time.Second * 10,
-		RemoteCacheAddr: "localhost:6379", // Adjust this to your remote cache address
+		RemoteCacheAddr: "localhost:7001", // Adjust this to your remote cache address
 	})
 	remoteCache2, err1, cleanup1 := cache.NewCache(&cache.CacheConfig{
 		Mode:            "remote",
 		CacheName:       "test1",
 		DefaultTTL:      time.Second * 10,
 		ApplyTouch:      true,
-		RemoteCacheAddr: "localhost:6379", // Adjust this to your remote cache address
+		RemoteCacheAddr: "localhost:7001", // Adjust this to your remote cache address
 	})
 	assert.NoError(t, err)
 	assert.NoError(t, err1)
