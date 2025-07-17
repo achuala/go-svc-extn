@@ -2,12 +2,69 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
 )
+
+// DefaultSerDe provides default serialization/deserialization for various types
+type DefaultSerDe[T any] struct{}
+
+func (s *DefaultSerDe[T]) Serialize(value T) ([]byte, error) {
+	// Handle different types appropriately
+	switch v := any(value).(type) {
+	case string:
+		return []byte(v), nil
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return []byte(fmt.Sprintf("%v", v)), nil
+	case float32, float64:
+		return []byte(fmt.Sprintf("%v", v)), nil
+	case bool:
+		if v {
+			return []byte("true"), nil
+		}
+		return []byte("false"), nil
+	default:
+		// For complex types, use JSON as fallback
+		return json.Marshal(value)
+	}
+}
+
+func (s *DefaultSerDe[T]) Deserialize(data []byte) (T, error) {
+	// Try to convert back to the original type
+	var zero T
+	zeroType := reflect.TypeOf(zero)
+
+	switch zeroType.Kind() {
+	case reflect.String:
+		return any(string(data)).(T), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if val, err := strconv.ParseInt(string(data), 10, 64); err == nil {
+			return any(val).(T), nil
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if val, err := strconv.ParseUint(string(data), 10, 64); err == nil {
+			return any(val).(T), nil
+		}
+	case reflect.Float32, reflect.Float64:
+		if val, err := strconv.ParseFloat(string(data), 64); err == nil {
+			return any(val).(T), nil
+		}
+	case reflect.Bool:
+		if val, err := strconv.ParseBool(string(data)); err == nil {
+			return any(val).(T), nil
+		}
+	}
+
+	// Fallback to JSON for complex types
+	return zero, json.Unmarshal(data, &zero)
+}
 
 var (
 	vkClientOnce sync.Once
@@ -16,20 +73,22 @@ var (
 )
 
 // RemoteCacheValkey is an implementation of Cache that uses Valkey as a remote cache.
-type RemoteCacheValkey struct {
+type RemoteCacheValkey[T any] struct {
 	name        string        // Name of the cache, used as a prefix for keys
 	ttl         time.Duration // Default time-to-live for cache entries
 	maxElements uint64        // Maximum number of elements allowed in the cache
 	applyTouch  bool          // Whether to extend TTL on cache hits
+	serDe       SerDe[T]
 }
 
 // NewRemoteCacheValkey creates a new instance of RemoteCacheValkey.
 // It initializes the Valkey client with the provided configuration.
-func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, error, func()) {
+func NewRemoteCacheValkey[T any](cacheCfg *CacheConfig[T]) (*RemoteCacheValkey[T], error, func()) {
 	if !strings.HasPrefix(cacheCfg.RemoteCacheAddr, "redis://") {
 		cacheCfg.RemoteCacheAddr = "redis://" + cacheCfg.RemoteCacheAddr
 	}
-	if cacheCfg.Mode == "cluster" {
+	switch cacheCfg.Mode {
+	case "cluster":
 		vkClientOnce.Do(func() {
 			// Connect to a cluster "redis://127.0.0.1:7001?addr=127.0.0.1:7002&addr=127.0.0.1:7003"
 			clusterClientOptions := valkey.MustParseURL(cacheCfg.RemoteCacheAddr)
@@ -39,12 +98,12 @@ func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, error, fun
 			}
 			vkClient, vkClientErr = valkey.NewClient(clusterClientOptions)
 		})
-	} else if cacheCfg.Mode == "sentinel" {
+	case "sentinel":
 		vkClientOnce.Do(func() {
 			// // connect to a valkey sentinel redis://127.0.0.1:26379/0?master_set=my_master"
 			vkClient, vkClientErr = valkey.NewClient(valkey.MustParseURL(cacheCfg.RemoteCacheAddr))
 		})
-	} else {
+	default:
 		// Standalone mode
 		clientOptions := valkey.MustParseURL(cacheCfg.RemoteCacheAddr)
 		clientOptions.SendToReplicas = func(cmd valkey.Completed) bool {
@@ -62,23 +121,28 @@ func NewRemoteCacheValkey(cacheCfg *CacheConfig) (*RemoteCacheValkey, error, fun
 	cleanup := func() {
 		// No need to close the client here as it's shared
 	}
+	// Set default SerDe if not provided
+	if cacheCfg.SerDe == nil {
+		cacheCfg.SerDe = &DefaultSerDe[T]{}
+	}
 
-	return &RemoteCacheValkey{
+	return &RemoteCacheValkey[T]{
 		name:        cacheCfg.CacheName,
 		ttl:         cacheCfg.DefaultTTL,
 		maxElements: cacheCfg.MaxElements,
 		applyTouch:  cacheCfg.ApplyTouch,
+		serDe:       cacheCfg.SerDe,
 	}, nil, cleanup
 }
 
 // makeKey creates a composite key by prefixing the provided key with the cache name.
-func (c *RemoteCacheValkey) makeKey(key string) string {
+func (c *RemoteCacheValkey[T]) makeKey(key string) string {
 	return c.name + ":" + key
 }
 
 // Get retrieves a value from the cache for the given key.
 // It returns the value and a boolean indicating whether the key was found.
-func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (string, bool) {
+func (c *RemoteCacheValkey[T]) Get(ctx context.Context, key string) (T, bool) {
 	compositeKey := c.makeKey(key)
 	var cmd valkey.Completed
 	if !c.applyTouch {
@@ -86,37 +150,65 @@ func (c *RemoteCacheValkey) Get(ctx context.Context, key string) (string, bool) 
 	} else {
 		cmd = vkClient.B().Getex().Key(compositeKey).Ex(c.ttl).Build()
 	}
+
 	val, err := vkClient.Do(ctx, cmd).ToString()
 	if err != nil {
-		return "", false
+		var zero T
+		return zero, false
 	}
-	return val, val != ""
+
+	if val == "" {
+		var zero T
+		return zero, false
+	}
+
+	// Use the SerDe to deserialize
+	result, err := c.serDe.Deserialize([]byte(val))
+	if err != nil {
+		var zero T
+		return zero, false
+	}
+
+	return result, true
 }
 
 // Set stores a value in the cache for the given key.
 // If a TTL is set, it calls SetWithTTL instead.
-func (c *RemoteCacheValkey) Set(ctx context.Context, key string, value string) error {
+func (c *RemoteCacheValkey[T]) Set(ctx context.Context, key string, value T) error {
 	if c.ttl.Seconds() > 0 {
 		return c.SetWithTTL(ctx, key, value, c.ttl)
 	}
-	cmd := vkClient.B().Set().Key(c.makeKey(key)).Value(value).Build()
+
+	// Use the SerDe to serialize
+	data, err := c.serDe.Serialize(value)
+	if err != nil {
+		return err
+	}
+
+	cmd := vkClient.B().Set().Key(c.makeKey(key)).Value(string(data)).Build()
 	return vkClient.Do(ctx, cmd).Error()
 }
 
 // SetWithTTL stores a value in the cache for the given key with a specified TTL.
-func (c *RemoteCacheValkey) SetWithTTL(ctx context.Context, key string, value string, ttl time.Duration) error {
-	cmd := vkClient.B().Set().Key(c.makeKey(key)).Value(value).Ex(ttl).Build()
+func (c *RemoteCacheValkey[T]) SetWithTTL(ctx context.Context, key string, value T, ttl time.Duration) error {
+	// Use the SerDe to serialize
+	data, err := c.serDe.Serialize(value)
+	if err != nil {
+		return err
+	}
+
+	cmd := vkClient.B().Set().Key(c.makeKey(key)).Value(string(data)).Ex(ttl).Build()
 	return vkClient.Do(ctx, cmd).Error()
 }
 
 // Expire sets the expiration time for the given key.
-func (c *RemoteCacheValkey) Expire(ctx context.Context, key string, ttl time.Duration) error {
+func (c *RemoteCacheValkey[T]) Expire(ctx context.Context, key string, ttl time.Duration) error {
 	cmd := vkClient.B().Expire().Key(c.makeKey(key)).Seconds(int64(ttl.Seconds())).Build()
 	return vkClient.Do(ctx, cmd).Error()
 }
 
 // Delete removes the key from the cache.
-func (c *RemoteCacheValkey) Delete(ctx context.Context, key string) error {
+func (c *RemoteCacheValkey[T]) Delete(ctx context.Context, key string) error {
 	cmd := vkClient.B().Del().Key(c.makeKey(key)).Build()
 	return vkClient.Do(ctx, cmd).Error()
 }

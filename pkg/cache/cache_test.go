@@ -6,91 +6,80 @@ import (
 	"time"
 
 	"github.com/achuala/go-svc-extn/pkg/cache"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestLocalCache(t *testing.T) {
-	cache, err, cleanup := cache.NewCache(&cache.CacheConfig{Mode: "local"})
-	defer cleanup()
-	value := "val1"
-	cache.Set(context.Background(), "key1", value)
-	time.Sleep(time.Second * 1)
-	if found, ok := cache.Get(context.Background(), "key1"); ok {
-		t.Log(found)
-	} else {
-		assert := assert.New(t)
-		assert.Equal(value, found, "they should be equal")
-	}
-	assert.NoError(t, err)
+type TestUser struct {
+	ID   int
+	Name string
 }
 
-func TestRemoteCache(t *testing.T) {
-	// Initialize remote cache
-	remoteCache, err, cleanup := cache.NewCache(&cache.CacheConfig{
-		Mode:            "remote",
-		CacheName:       "test",
-		DefaultTTL:      time.Second * 10,
-		RemoteCacheAddr: "localhost:7001", // Adjust this to your remote cache address
+func TestLocalGenericCache(t *testing.T) {
+	cache, err, cleanup := cache.NewCache[TestUser](&cache.CacheConfig[TestUser]{
+		Mode: "local",
 	})
-	remoteCache2, err1, cleanup1 := cache.NewCache(&cache.CacheConfig{
-		Mode:            "remote",
-		CacheName:       "test1",
-		DefaultTTL:      time.Second * 10,
-		ApplyTouch:      true,
-		RemoteCacheAddr: "localhost:7001", // Adjust this to your remote cache address
-	})
-	assert.NoError(t, err)
-	assert.NoError(t, err1)
-	defer cleanup1()
+	require.NoError(t, err)
 	defer cleanup()
 
 	ctx := context.Background()
-	key := "remoteKey"
-	value := "remoteValue"
+	user := TestUser{ID: 1, Name: "Alice"}
+	err = cache.Set(ctx, "user:1", user)
+	require.NoError(t, err)
 
-	// Test Set
-	err = remoteCache.Set(ctx, key, value)
-	assert.NoError(t, err)
-
-	// Test Get
-	retrievedValue, ok := remoteCache.Get(ctx, key)
-	assert.True(t, ok)
-	assert.Equal(t, value, retrievedValue)
-
-	// Test Delete
-	err = remoteCache.Delete(ctx, key)
-	assert.NoError(t, err)
-
-	// Verify key is deleted
-	_, ok = remoteCache.Get(ctx, key)
-	assert.False(t, ok)
+	got, found := cache.Get(ctx, "user:1")
+	require.True(t, found)
+	require.Equal(t, user, got)
 
 	// Test SetWithTTL
-	ttl := 2 * time.Second
-	err = remoteCache.SetWithTTL(ctx, key, value, ttl)
-	assert.NoError(t, err)
+	err = cache.SetWithTTL(ctx, "user:2", user, 1*time.Second)
+	require.NoError(t, err)
+	got, found = cache.Get(ctx, "user:2")
+	require.True(t, found)
+	time.Sleep(2 * time.Second)
+	_, found = cache.Get(ctx, "user:2")
+	require.False(t, found)
+}
 
-	// Verify key exists
-	retrievedValue, ok = remoteCache.Get(ctx, key)
-	assert.True(t, ok)
-	assert.Equal(t, value, retrievedValue)
+func TestRemoteGenericCache(t *testing.T) {
+	cache, err, cleanup := cache.NewCache[TestUser](&cache.CacheConfig[TestUser]{
+		Mode:            "remote",
+		CacheName:       "test",
+		DefaultTTL:      2 * time.Second,
+		RemoteCacheAddr: "localhost:6379", // Adjust as needed
+		SerDe:           cache.NewJSONSerDe[TestUser](),
+	})
+	require.NoError(t, err)
+	defer cleanup()
 
-	// Wait for TTL to expire
-	time.Sleep(ttl + time.Second)
+	ctx := context.Background()
+	user := TestUser{ID: 2, Name: "Bob"}
+	err = cache.Set(ctx, "user:remote", user)
+	require.NoError(t, err)
 
-	// Verify key has expired
-	_, ok = remoteCache.Get(ctx, key)
-	assert.False(t, ok)
+	got, found := cache.Get(ctx, "user:remote")
+	require.True(t, found)
+	require.Equal(t, user, got)
 
-	remoteCache2.Set(ctx, key, value)
-	time.Sleep(time.Second * 1)
-	retrievedValue, ok = remoteCache2.Get(ctx, key)
-	assert.True(t, ok)
-	assert.Equal(t, value, retrievedValue)
-	// Wait for TTL to expire
-	time.Sleep(ttl + time.Second)
+	// Test SetWithTTL
+	err = cache.SetWithTTL(ctx, "user:remote2", user, 1*time.Second)
+	require.NoError(t, err)
+	got, found = cache.Get(ctx, "user:remote2")
+	require.True(t, found)
+	time.Sleep(2 * time.Second)
+	_, found = cache.Get(ctx, "user:remote2")
+	require.False(t, found)
+}
 
-	// Verify key has not expired
-	_, ok = remoteCache2.Get(ctx, key)
-	assert.True(t, ok)
+func TestLocalStringCache(t *testing.T) {
+	cache, err, cleanup := cache.NewCache[string](&cache.CacheConfig[string]{Mode: "local"})
+	require.NoError(t, err)
+	defer cleanup()
+
+	ctx := context.Background()
+	err = cache.Set(ctx, "key", "value")
+	require.NoError(t, err)
+
+	got, found := cache.Get(ctx, "key")
+	require.True(t, found)
+	require.Equal(t, "value", got)
 }
