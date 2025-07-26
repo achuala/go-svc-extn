@@ -99,7 +99,7 @@ func NewIdWithPrefix(prefix string) string {
 	if err != nil {
 		return ""
 	}
-	return prefix + strings.Replace(id.String(), "-", "", -1)
+	return prefix + strings.ReplaceAll(id.String(), "-", "")
 }
 
 func NewUUID() string {
