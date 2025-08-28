@@ -49,12 +49,13 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 	startTime := time.Now()
 
 	// Consolidate correlation ID retrieval logic
-	if kind == "server" {
+	switch kind {
+	case "server":
 		if info, ok := transport.FromServerContext(ctx); ok {
 			component = info.Kind().String()
 			operation = info.Operation()
 		}
-	} else if kind == "client" {
+	case "client":
 		if info, ok := transport.FromClientContext(ctx); ok {
 			component = info.Kind().String()
 			operation = info.Operation()
