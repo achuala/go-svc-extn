@@ -35,7 +35,7 @@ func NewCryptoUtil(cfg *CryptoConfig) (*CryptoUtil, error) {
 	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KekUriPrefix: cfg.KmsUriPrefix, KeySetData: cfg.KeysetData, KekAd: cfg.KekAd}
 	cryptoProvider, err := encdec.NewTinkCryptoHandler(tinkCfg)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to create crypto provider")
 	}
 	return &CryptoUtil{hasher, cryptoProvider}, nil
 }
@@ -54,7 +54,7 @@ func (u *CryptoUtil) CreateAlias(ctx context.Context, plain []byte) ([]byte, err
 func (u *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []byte) (bool, error) {
 	newHash, err := u.CreateAlias(ctx, plainName)
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, "unable to create alias")
 	}
 
 	// Compare the stored hash with the newly generated hash
@@ -64,26 +64,46 @@ func (u *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []by
 }
 
 // Encrypt encrypts the given plain text.
-// It returns the encrypted value of the plain text.
+// It returns the encrypted value of the plain text. Returned value is base64 encoded.
 func (u *CryptoUtil) Encrypt(ctx context.Context, plainText, ad []byte) (string, error) {
 	if cipherText, err := u.cryptoProvider.Encrypt(ctx, plainText, ad); err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to encrypt")
 	} else {
 		return base64.RawStdEncoding.EncodeToString(cipherText), nil
 	}
 }
 
-// Decrypt decrypts the given cipher text.
+// EncryptRaw encrypts the given plain text.
+// It returns the encrypted value of the plain text. Returned value is not encoded.
+func (u *CryptoUtil) EncryptRaw(ctx context.Context, plainText, ad []byte) ([]byte, error) {
+	if cipherText, err := u.cryptoProvider.Encrypt(ctx, plainText, ad); err != nil {
+		return nil, errors.Wrap(err, "unable to encrypt")
+	} else {
+		return cipherText, nil
+	}
+}
+
+// Decrypt decrypts the given cipher text. Expected input is base64 encoded.
 // It returns the decrypted value of the cipher text.
 func (u *CryptoUtil) Decrypt(ctx context.Context, cipeherText string, ad []byte) ([]byte, error) {
 	if cipher, err := base64.RawStdEncoding.DecodeString(cipeherText); err != nil {
 		return nil, errors.Wrap(err, "unable to decode")
 	} else {
 		if plainText, err := u.cryptoProvider.Decrypt(ctx, cipher, ad); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "unable to decrypt")
 		} else {
 			return plainText, nil
 		}
+	}
+}
+
+// DecryptRaw decrypts the given cipher text. Expected input is not encoded.
+// It returns the decrypted value of the cipher text.
+func (u *CryptoUtil) DecryptRaw(ctx context.Context, cipeherText []byte, ad []byte) ([]byte, error) {
+	if plainText, err := u.cryptoProvider.Decrypt(ctx, cipeherText, ad); err != nil {
+		return nil, errors.Wrap(err, "unable to decrypt")
+	} else {
+		return plainText, nil
 	}
 }
 
@@ -98,7 +118,7 @@ func generateKey() (string, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to generate key")
 	}
 	return base64.RawStdEncoding.EncodeToString(key), nil
 }
@@ -108,22 +128,22 @@ func generateKey() (string, error) {
 func EncryptWithKey(ctx context.Context, key, plainText string) (string, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to decode key")
 	}
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to create AES cipher")
 	}
 
 	// Never use more than 2^32 random nonces with a given key because of the risk of a repeat.
 	nonce := make([]byte, 12)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to generate random nonce")
 	}
 
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "unable to create AES GCM cipher")
 	}
 
 	cipherBytes := aesgcm.Seal(nil, nonce, []byte(plainText), nil)
@@ -138,7 +158,7 @@ func EncryptWithKey(ctx context.Context, key, plainText string) (string, error) 
 func DecryptWithKey(ctx context.Context, key, cipeherText string) ([]byte, error) {
 	keyBytes, err := base64.RawStdEncoding.DecodeString(key)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to decode key")
 	}
 
 	// We need to split the data using $
@@ -149,23 +169,28 @@ func DecryptWithKey(ctx context.Context, key, cipeherText string) ([]byte, error
 
 	nonce, err := base64.RawStdEncoding.DecodeString(splitCipherText[0])
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to decode nonce")
 	}
 
 	cipherBytes, err := base64.RawStdEncoding.DecodeString(splitCipherText[1])
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to decode cipher bytes")
 	}
 
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to create AES cipher")
 	}
 
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to create AES GCM cipher")
 	}
 
-	return aesgcm.Open(nil, nonce, cipherBytes, nil)
+	plainText, err := aesgcm.Open(nil, nonce, cipherBytes, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to decrypt cipher text")
+	}
+
+	return plainText, nil
 }
