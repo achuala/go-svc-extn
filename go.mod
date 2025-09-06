@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.8-20250717185734-6c6e0d3c608e.1
 	buf.build/go/protovalidate v0.14.0
-	github.com/ThreeDotsLabs/watermill v1.5.0
+	github.com/ThreeDotsLabs/watermill v1.5.1
 	github.com/ThreeDotsLabs/watermill-nats/v2 v2.1.3
 	github.com/btcsuite/btcutil v1.0.2
 	github.com/cloudevents/sdk-go v1.2.0
@@ -27,7 +27,7 @@ require (
 	golang.org/x/crypto v0.41.0
 	google.golang.org/protobuf v1.36.8
 	gorm.io/driver/postgres v1.6.0
-	gorm.io/gorm v1.30.2
+	gorm.io/gorm v1.30.3
 )
 
 require (
