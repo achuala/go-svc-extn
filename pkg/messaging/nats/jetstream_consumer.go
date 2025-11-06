@@ -43,18 +43,30 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
+		nc.DisconnectErrHandler(func(nc *nc.Conn, err error) {
+			log.Errorf("NATS disconnected: %v", err)
+		}),
+		nc.ReconnectHandler(func(nc *nc.Conn) {
+			log.Infof("NATS reconnected to %s", nc.ConnectedServerId)
+		}),
+		nc.ConnectHandler(func(nc *nc.Conn) {
+			log.Infof("NATS connected to %s", nc.ConnectedServerId)
+		}),
 	}
 	conn, err := nc.Connect(cfg.Address, options...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to connect to nats: %w", err)
 	}
 	log.Infof("consumer connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
+
 	// Consumer configuration just uses the durable name, the expectation is that the stream is already created and consumer is already created
 	// with necessary configuration.
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
 			Durable:       subCfg.DurableName,
 			AckPolicy:     jetstream.AckExplicitPolicy,
+			AckWait:       5 * time.Second,
+			DeliverPolicy: jetstream.DeliverAllPolicy,
 			FilterSubject: subCfg.Subject,
 		}
 	}
@@ -73,7 +85,7 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 		return nil, nil, err
 	}
 	router.AddMiddleware(middleware.Recoverer)
-	router.AddNoPublisherHandler(subCfg.HandlerName, subCfg.Subject, subscriber, subCfg.HandlerFunc)
+	router.AddConsumerHandler(subCfg.HandlerName, subCfg.Subject, subscriber, subCfg.HandlerFunc)
 	jsConsumer := &NatsJsConsumer{router: router, subscriber: subscriber, log: log}
 	return jsConsumer, func() {
 		log.Info("closing consumer")

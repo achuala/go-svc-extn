@@ -22,22 +22,37 @@ type CryptoUtil struct {
 }
 
 type CryptoConfig struct {
-	KmsUri       string
-	KmsUriPrefix string
-	KeysetData   string
-	HmacKey      string
-	KekAd        []byte
+	KmsUri        string
+	KmsUriPrefix  string
+	KeysetData    string
+	HmacKey       string
+	KekAd         []byte
+	HashAlgorithm string
 }
 
 func NewCryptoUtil(cfg *CryptoConfig) (*CryptoUtil, error) {
-	conf := hash.SipHashConfiguration{Key: cfg.HmacKey}
-	hasher := hash.NewHasherSipHash24(&conf)
 	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KekUriPrefix: cfg.KmsUriPrefix, KeySetData: cfg.KeysetData, KekAd: cfg.KekAd}
 	cryptoProvider, err := encdec.NewTinkCryptoHandler(tinkCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create crypto provider")
 	}
-	return &CryptoUtil{hasher, cryptoProvider}, nil
+	var hasher hash.Hasher
+	switch cfg.HashAlgorithm {
+	case "siphash24":
+		conf := hash.SipHashConfiguration{Key: cfg.HmacKey}
+		hasher = hash.NewHasherSipHash24(&conf)
+	case "sha256":
+		sha256Key, err := base64.RawStdEncoding.DecodeString(cfg.HmacKey)
+		if err != nil {
+			return nil, errors.Wrap(err, "error decoding sha256 key")
+		}
+		conf := hash.Sha256Configuration{Key: sha256Key}
+		hasher = hash.NewHasherSha256(&conf)
+	default:
+		return nil, errors.New("invalid hashing algorithm: " + cfg.HashAlgorithm)
+	}
+
+	return &CryptoUtil{hashProvider: hasher, cryptoProvider: cryptoProvider}, nil
 }
 
 // CreateAlias creates an alias for the given plain text.
