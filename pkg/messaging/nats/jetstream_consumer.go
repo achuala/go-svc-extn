@@ -43,19 +43,32 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
+		nc.DisconnectErrHandler(func(nc *nc.Conn, err error) {
+			log.Errorf("nats disconnected: %v", err)
+		}),
+		nc.ReconnectHandler(func(nc *nc.Conn) {
+			log.Infof("nats reconnected to %s", nc.ConnectedServerId())
+		}),
+		nc.ConnectHandler(func(nc *nc.Conn) {
+			log.Infof("nats connected to %s", nc.ConnectedServerId())
+		}),
 	}
 	conn, err := nc.Connect(cfg.Address, options...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to connect to nats: %w", err)
 	}
 	log.Infof("consumer connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
+
 	// Consumer configuration just uses the durable name, the expectation is that the stream is already created and consumer is already created
 	// with necessary configuration.
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
 			Durable:       subCfg.DurableName,
-			AckPolicy:     jetstream.AckExplicitPolicy,
+			AckPolicy:     subCfg.AckPolicy,
+			AckWait:       subCfg.AckWait,
+			DeliverPolicy: subCfg.DeliverPolicy,
 			FilterSubject: subCfg.Subject,
+			MaxAckPending: subCfg.MaxAckPending,
 		}
 	}
 	subscriberConfig := watermill_nats.SubscriberConfig{
@@ -73,24 +86,24 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 		return nil, nil, err
 	}
 	router.AddMiddleware(middleware.Recoverer)
-	router.AddNoPublisherHandler(subCfg.HandlerName, subCfg.Subject, subscriber, subCfg.HandlerFunc)
+	router.AddConsumerHandler(subCfg.HandlerName, subCfg.Subject, subscriber, subCfg.HandlerFunc)
 	jsConsumer := &NatsJsConsumer{router: router, subscriber: subscriber, log: log}
 	return jsConsumer, func() {
-		log.Info("closing consumer")
+		log.Infof("closing nats js consumer - %s", subCfg.ConsumerName)
 		if jsConsumer.subscriber != nil {
 			if err := jsConsumer.subscriber.Close(); err != nil {
-				log.Warnf("error closing subscriber: %v", err)
+				log.Warnf("error closing nats js subscriber - %s: %v", subCfg.ConsumerName, err)
 			}
 		}
 		if jsConsumer.router != nil {
 			if err := jsConsumer.router.Close(); err != nil {
-				log.Warnf("error closing router: %v", err)
+				log.Warnf("error closing nats js router - %s: %v", subCfg.ConsumerName, err)
 			}
 		}
 	}, nil
 }
 
 func (c *NatsJsConsumer) Run(ctx context.Context) error {
-	log.Info("starting router and consumer")
+	log.Info("starting nats js router and consumer")
 	return c.router.Run(ctx)
 }

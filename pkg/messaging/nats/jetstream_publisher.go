@@ -23,14 +23,22 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
+		nc.DisconnectErrHandler(func(nc *nc.Conn, err error) {
+			log.Errorf("nats disconnected: %v", err)
+		}),
+		nc.ReconnectHandler(func(nc *nc.Conn) {
+			log.Infof("nats reconnected to %s", nc.ConnectedServerId())
+		}),
+		nc.ConnectHandler(func(nc *nc.Conn) {
+			log.Infof("nats connected to %s", nc.ConnectedServerId())
+		}),
 	}
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
-	log.Infof("publisher connecting  to nats at - %s", cfg.Address)
+	log.Infof("nats js publisher connecting to nats at - %s", cfg.Address)
 	publisher, err := watermill_nats.NewPublisher(
 		watermill_nats.PublisherConfig{
 			URL:         cfg.Address,
 			NatsOptions: options,
-			Marshaler:   &watermill_nats.NATSMarshaler{},
 		},
 		wmLogger,
 	)

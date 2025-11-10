@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 
 	"github.com/dchest/siphash"
+	"github.com/pkg/errors"
 )
 
 type SipHash24 struct {
@@ -23,12 +24,12 @@ func (h *SipHash24) Generate(ctx context.Context, data []byte) ([]byte, error) {
 
 	hasher := siphash.New([]byte(h.c.Key))
 	if _, err := hasher.Write(data); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 	hash := hasher.Sum(nil)
-
-	return []byte(base64.StdEncoding.EncodeToString(hash)), nil
-
+	dst := make([]byte, base64.StdEncoding.EncodedLen(len(hash)))
+	base64.StdEncoding.Encode(dst, hash)
+	return dst, nil
 }
 
 func (h *SipHash24) Understands(hash []byte) bool {
