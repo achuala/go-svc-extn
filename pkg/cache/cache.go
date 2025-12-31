@@ -166,6 +166,9 @@ type Cache[T any] interface {
 	// Deletes the value for the given key.
 	// If the key is not found, it returns an error.
 	Delete(ctx context.Context, key string) error
+	// DeleteMulti deletes multiple keys at once.
+	// Returns the number of keys that were deleted.
+	DeleteMulti(ctx context.Context, keys ...string) (int64, error)
 	// Sets the expiration time for the given key.
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	// Sets the value for the given key with a specific TTL.

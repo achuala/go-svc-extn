@@ -92,6 +92,20 @@ func (c *LocalCacheRistretto[T]) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// DeleteMulti removes multiple keys from the cache.
+// Returns the number of keys that were deleted.
+func (c *LocalCacheRistretto[T]) DeleteMulti(ctx context.Context, keys ...string) (int64, error) {
+	var count int64
+	for _, key := range keys {
+		// Check if key exists before deleting
+		if _, found := c.cache.Get(key); found {
+			c.cache.Del(key)
+			count++
+		}
+	}
+	return count, nil
+}
+
 // Increment increments the integer value of a key by delta.
 func (c *LocalCacheRistretto[T]) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	// Not atomic.

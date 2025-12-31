@@ -593,3 +593,187 @@ func TestRemoteCache_HashFieldNoTouch(t *testing.T) {
 	err = c.Delete(ctx, key)
 	assert.NoError(t, err)
 }
+
+func TestLocalCache_DeleteMulti(t *testing.T) {
+	ctx := context.Background()
+	cfg := &CacheConfig[string]{
+		Mode:       "local",
+		DefaultTTL: time.Minute,
+	}
+	c, err, _ := NewCache(cfg)
+	assert.NoError(t, err)
+
+	// Set multiple keys
+	keys := []string{"key1", "key2", "key3", "key4"}
+	for _, key := range keys {
+		err = c.Set(ctx, key, "value_"+key)
+		assert.NoError(t, err)
+	}
+	time.Sleep(10 * time.Millisecond) // Ristretto async set
+
+	// Verify all keys exist
+	for _, key := range keys {
+		_, found := c.Get(ctx, key)
+		assert.True(t, found, "Key %s should exist", key)
+	}
+
+	// Delete multiple keys at once
+	count, err := c.DeleteMulti(ctx, "key1", "key2", "key3")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), count, "Should delete 3 keys")
+	time.Sleep(10 * time.Millisecond)
+
+	// Verify deleted keys don't exist
+	for _, key := range []string{"key1", "key2", "key3"} {
+		_, found := c.Get(ctx, key)
+		assert.False(t, found, "Key %s should not exist", key)
+	}
+
+	// Verify key4 still exists
+	_, found := c.Get(ctx, "key4")
+	assert.True(t, found, "Key4 should still exist")
+
+	// Test deleting non-existent keys
+	count, err = c.DeleteMulti(ctx, "key1", "nonexistent1", "nonexistent2")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), count, "Should delete 0 keys (all already deleted)")
+
+	// Test deleting mix of existing and non-existing keys
+	count, err = c.DeleteMulti(ctx, "key4", "nonexistent")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), count, "Should delete 1 key")
+
+	// Test deleting with empty keys
+	count, err = c.DeleteMulti(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), count, "Should delete 0 keys when no keys provided")
+}
+
+func TestRemoteCache_DeleteMulti(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping remote cache test in short mode")
+	}
+
+	ctx := context.Background()
+	cfg := &CacheConfig[string]{
+		Mode:            "remote",
+		CacheName:       "test_delete_multi",
+		DefaultTTL:      time.Minute,
+		RemoteCacheAddr: "localhost:6379",
+	}
+	c, err, cleanup := NewCache(cfg)
+	if err != nil {
+		t.Skipf("Skipping test: Valkey not available - %v", err)
+		return
+	}
+	defer cleanup()
+
+	// Set multiple keys
+	keys := []string{"key1", "key2", "key3", "key4", "key5"}
+	for _, key := range keys {
+		err = c.Set(ctx, key, "value_"+key)
+		assert.NoError(t, err)
+	}
+
+	// Verify all keys exist
+	for _, key := range keys {
+		_, found := c.Get(ctx, key)
+		assert.True(t, found, "Key %s should exist", key)
+	}
+
+	// Delete multiple keys at once
+	count, err := c.DeleteMulti(ctx, "key1", "key2", "key3")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(3), count, "Should delete 3 keys")
+
+	// Verify deleted keys don't exist
+	for _, key := range []string{"key1", "key2", "key3"} {
+		_, found := c.Get(ctx, key)
+		assert.False(t, found, "Key %s should not exist", key)
+	}
+
+	// Verify key4 and key5 still exist
+	for _, key := range []string{"key4", "key5"} {
+		_, found := c.Get(ctx, key)
+		assert.True(t, found, "Key %s should still exist", key)
+	}
+
+	// Test deleting non-existent keys
+	count, err = c.DeleteMulti(ctx, "key1", "nonexistent1", "nonexistent2")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), count, "Should delete 0 keys (all already deleted)")
+
+	// Test deleting mix of existing and non-existing keys
+	count, err = c.DeleteMulti(ctx, "key4", "key5", "nonexistent")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(2), count, "Should delete 2 keys")
+
+	// Test deleting with empty keys
+	count, err = c.DeleteMulti(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), count, "Should delete 0 keys when no keys provided")
+}
+
+func TestRemoteCache_DeleteMultiPerformance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping remote cache test in short mode")
+	}
+
+	ctx := context.Background()
+	cfg := &CacheConfig[string]{
+		Mode:            "remote",
+		CacheName:       "test_delete_perf",
+		DefaultTTL:      time.Minute,
+		RemoteCacheAddr: "localhost:6379",
+	}
+	c, err, cleanup := NewCache(cfg)
+	if err != nil {
+		t.Skipf("Skipping test: Valkey not available - %v", err)
+		return
+	}
+	defer cleanup()
+
+	// Set 100 keys
+	numKeys := 100
+	keys := make([]string, numKeys)
+	for i := 0; i < numKeys; i++ {
+		keys[i] = fmt.Sprintf("perf_key_%d", i)
+		err = c.Set(ctx, keys[i], fmt.Sprintf("value_%d", i))
+		assert.NoError(t, err)
+	}
+
+	// Delete all keys at once using DeleteMulti (single round-trip)
+	start := time.Now()
+	count, err := c.DeleteMulti(ctx, keys...)
+	multiDuration := time.Since(start)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(numKeys), count, "Should delete all %d keys", numKeys)
+
+	t.Logf("DeleteMulti deleted %d keys in %v (single atomic operation)", numKeys, multiDuration)
+
+	// Verify all keys are deleted
+	for _, key := range keys {
+		_, found := c.Get(ctx, key)
+		assert.False(t, found, "Key %s should not exist", key)
+	}
+
+	// Set keys again for comparison
+	for i := 0; i < numKeys; i++ {
+		err = c.Set(ctx, keys[i], fmt.Sprintf("value_%d", i))
+		assert.NoError(t, err)
+	}
+
+	// Delete keys one by one for comparison (multiple round-trips)
+	start = time.Now()
+	for _, key := range keys {
+		err = c.Delete(ctx, key)
+		assert.NoError(t, err)
+	}
+	singleDuration := time.Since(start)
+
+	t.Logf("Individual Delete operations deleted %d keys in %v (multiple operations)", numKeys, singleDuration)
+	t.Logf("DeleteMulti is %.2fx faster than individual deletes", float64(singleDuration)/float64(multiDuration))
+
+	// DeleteMulti should be significantly faster for remote cache
+	assert.True(t, multiDuration < singleDuration, "DeleteMulti should be faster than individual deletes")
+}

@@ -246,6 +246,29 @@ func (c *RemoteCacheValkey[T]) Delete(ctx context.Context, key string) error {
 	return vkClient.Do(ctx, cmd).Error()
 }
 
+// DeleteMulti removes multiple keys from the cache.
+// Returns the number of keys that were deleted.
+// Uses the DEL command which accepts multiple keys and is atomic.
+func (c *RemoteCacheValkey[T]) DeleteMulti(ctx context.Context, keys ...string) (int64, error) {
+	if len(keys) == 0 {
+		return 0, nil
+	}
+
+	// Convert all keys to composite keys with cache name prefix
+	compositeKeys := make([]string, len(keys))
+	for i, key := range keys {
+		compositeKeys[i] = c.makeKey(key)
+	}
+
+	// Use DEL command which accepts multiple keys
+	cmd := vkClient.B().Del().Key(compositeKeys...).Build()
+	count, err := vkClient.Do(ctx, cmd).ToInt64()
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // Increment increments the integer value of a key by delta.
 func (c *RemoteCacheValkey[T]) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	cmd := vkClient.B().Incrby().Key(c.makeKey(key)).Increment(delta).Build()
