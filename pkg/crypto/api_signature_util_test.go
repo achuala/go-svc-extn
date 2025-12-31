@@ -120,6 +120,9 @@ func TestComputeSignature(t *testing.T) {
 				mockProvider := NewMockAccessSecretProvider()
 				mockProvider.secrets["test-key-id"] = tt.accessSecret
 
+				signedHeaders = "api-version=v1/user-id=test-user/api-name=test-api/channel=web/timestamp=2025-10-23T14:55:37.7787067+05:30/"
+				signature = "36efbe37b9bb3855698fb8a92543a9273481b018ba38ff47bcdb5e4b2ebb9020"
+				payloadHash = "e43abcf3375244839c012f9633f95862d232a95b00d5bc7348b3098b9fed7f32"
 				valid, err := VerifySignature(signedHeaders, payloadHash, signature, tt.accessSecret)
 				if !valid || err != nil {
 					t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
@@ -237,7 +240,20 @@ func TestParseSignatureHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.authHeader = "alg=HMAC-SHA256,access-key=test-key-id,signed-headers=api-version=v1/user-id=test-user/api-name=test-api/channel=web/timestamp=2025-10-23T15:14:34.528498+05:30/,signature=428b8c88eeb605d628ff57cfe7768b2c503ecb715697626848cfcaa406c63d2e"
 			alg, creds, headers, signature, err := ParseSignatureHeader(tt.authHeader)
+			if err != nil {
+				t.Errorf("ParseSignatureHeader failed: err=%v", err)
+			}
+			// First compute SHA256 of payload
+			hasher := sha256.New()
+			hasher.Write([]byte(`{"key":"value"}`))
+			payloadHash := hex.EncodeToString(hasher.Sum(nil))
+
+			valid, err := VerifySignature(headers, payloadHash, signature, "test-secret-key")
+			if !valid || err != nil {
+				t.Errorf("Signature verification failed: valid=%v, err=%v", valid, err)
+			}
 
 			if tt.expectedError != "" {
 				if err == nil || err.Error() != tt.expectedError {

@@ -64,10 +64,11 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
 			Durable:       subCfg.DurableName,
-			AckPolicy:     jetstream.AckExplicitPolicy,
-			AckWait:       5 * time.Second,
-			DeliverPolicy: jetstream.DeliverAllPolicy,
+			AckPolicy:     subCfg.AckPolicy,
+			AckWait:       subCfg.AckWait,
+			DeliverPolicy: subCfg.DeliverPolicy,
 			FilterSubject: subCfg.Subject,
+			MaxAckPending: subCfg.MaxAckPending,
 		}
 	}
 	subscriberConfig := watermill_nats.SubscriberConfig{
