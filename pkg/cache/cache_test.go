@@ -26,6 +26,9 @@ func TestLocalGenericCache(t *testing.T) {
 	err = cache.Set(ctx, "user:1", user)
 	require.NoError(t, err)
 
+	// Ristretto is async, so wait a bit for the set to complete
+	time.Sleep(10 * time.Millisecond)
+
 	got, found := cache.Get(ctx, "user:1")
 	require.True(t, found)
 	require.Equal(t, user, got)
@@ -33,6 +36,7 @@ func TestLocalGenericCache(t *testing.T) {
 	// Test SetWithTTL
 	err = cache.SetWithTTL(ctx, "user:2", user, 1*time.Second)
 	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
 	got, found = cache.Get(ctx, "user:2")
 	require.True(t, found)
 	time.Sleep(2 * time.Second)
@@ -78,6 +82,9 @@ func TestLocalStringCache(t *testing.T) {
 	ctx := context.Background()
 	err = cache.Set(ctx, "key", "value")
 	require.NoError(t, err)
+
+	// Ristretto is async, so wait a bit for the set to complete
+	time.Sleep(10 * time.Millisecond)
 
 	got, found := cache.Get(ctx, "key")
 	require.True(t, found)
