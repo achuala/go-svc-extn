@@ -63,6 +63,11 @@ func (c *LocalCacheRistretto[T]) Get(ctx context.Context, key string) (T, bool) 
 	return val, true
 }
 
+// GetEx retrieves a value from the cache for the given key, No extend of TTL
+func (c *LocalCacheRistretto[T]) GetEx(ctx context.Context, key string, ttl time.Duration) (T, bool) {
+	return c.Get(ctx, key)
+}
+
 // Set stores a value in the cache for the given key.
 // If a TTL is set, it calls SetWithTTL instead.
 func (c *LocalCacheRistretto[T]) Set(ctx context.Context, key string, value T) error {
@@ -237,7 +242,7 @@ func (c *LocalCacheRistretto[T]) HDel(ctx context.Context, key string, fields ..
 	}
 	// Update cache
 	// Note: Ristretto items are likely immutable/copied?
-	// Actually Ristretto stores interface{}, so modifying map in place *might* work if it's a pointer/map,
+	// Actually Ristretto stores any, so modifying map in place *might* work if it's a pointer/map,
 	// but Ristretto might manage its own memory.
 	// To be safe and ensure it persists (and TTL is refreshed/kept), we Set it again.
 	// But Set resets TTL in Ristretto if not SetWithTTL.

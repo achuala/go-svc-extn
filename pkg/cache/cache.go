@@ -160,6 +160,8 @@ type Cache[T any] interface {
 	// Returns the value for the given key.
 	// If the key is not found, it returns nil and false.
 	Get(ctx context.Context, key string) (T, bool)
+	// Returns the value for the given key, and extends the TTL
+	GetEx(ctx context.Context, key string, ttl time.Duration) (T, bool)
 	// Sets the value for the given key.
 	// If the key already exists, it returns an error.
 	Set(ctx context.Context, key string, value T) error

@@ -205,6 +205,32 @@ func (c *RemoteCacheValkey[T]) Get(ctx context.Context, key string) (T, bool) {
 	return result, true
 }
 
+// GetEx retrieves a value from the cache for the given key, and extends the TTL
+// It returns the value and a boolean indicating whether the key was found.
+func (c *RemoteCacheValkey[T]) GetEx(ctx context.Context, key string, ttl time.Duration) (T, bool) {
+	compositeKey := c.makeKey(key)
+	cmd := vkClient.B().Getex().Key(compositeKey).Ex(ttl).Build()
+	val, err := vkClient.Do(ctx, cmd).ToString()
+	if err != nil {
+		var zero T
+		return zero, false
+	}
+
+	if val == "" {
+		var zero T
+		return zero, false
+	}
+
+	// Use the SerDe to deserialize
+	result, err := c.serDe.Deserialize([]byte(val))
+	if err != nil {
+		var zero T
+		return zero, false
+	}
+
+	return result, true
+}
+
 // Set stores a value in the cache for the given key.
 // If a TTL is set, it calls SetWithTTL instead.
 func (c *RemoteCacheValkey[T]) Set(ctx context.Context, key string, value T) error {
