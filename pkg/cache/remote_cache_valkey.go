@@ -423,6 +423,38 @@ func (c *RemoteCacheValkey[T]) HGet(ctx context.Context, key string, field strin
 	return result, true
 }
 
+// HGetEx gets the value of a field in a hash and extends the TTL.
+func (c *RemoteCacheValkey[T]) HGetEx(ctx context.Context, key string, field string, ttl time.Duration) (T, bool) {
+	compositeKey := c.makeKey(key)
+	// HGETEX - extends field TTL on access (Valkey 9.0+)
+	// Syntax: HGETEX key EX seconds FIELDS numfields field
+	cmd := vkClient.B().Arbitrary("HGETEX", compositeKey,
+		"EX", strconv.FormatInt(int64(ttl.Seconds()), 10),
+		"FIELDS", "1", field).Build()
+
+	// HGETEX returns an array of values
+	strSlice, err := vkClient.Do(ctx, cmd).AsStrSlice()
+	if err != nil {
+		var zero T
+		if valkey.IsValkeyNil(err) {
+			return zero, false
+		}
+		return zero, false
+	}
+
+	// Get first element from array
+	if len(strSlice) == 0 || strSlice[0] == "" {
+		var zero T
+		return zero, false
+	}
+	result, err := c.serDe.Deserialize([]byte(strSlice[0]))
+	if err != nil {
+		var zero T
+		return zero, false
+	}
+	return result, true
+}
+
 // HGetAll gets all fields and values in a hash.
 func (c *RemoteCacheValkey[T]) HGetAll(ctx context.Context, key string) (map[string]T, error) {
 	cmd := vkClient.B().Hgetall().Key(c.makeKey(key)).Build()

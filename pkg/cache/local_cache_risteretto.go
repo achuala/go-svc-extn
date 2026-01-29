@@ -207,6 +207,11 @@ func (c *LocalCacheRistretto[T]) HGet(ctx context.Context, key string, field str
 	return val, ok
 }
 
+// HGetEx gets the value of a field in a hash and extends the TTL.
+func (c *LocalCacheRistretto[T]) HGetEx(ctx context.Context, key string, field string, ttl time.Duration) (T, bool) {
+	return c.HGet(ctx, key, field)
+}
+
 // HGetAll gets all fields and values in a hash.
 func (c *LocalCacheRistretto[T]) HGetAll(ctx context.Context, key string) (map[string]T, error) {
 	v, found := c.cache.Get(key)

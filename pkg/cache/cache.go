@@ -230,6 +230,9 @@ type Cache[T any] interface {
 	//   cache.HSetWithTTL(ctx, "user:123:sessions", "session:api", apiToken, 1*time.Hour)
 	HGet(ctx context.Context, key string, field string) (T, bool)
 
+	// HGetEx gets the value of a field in a hash and extends the TTL.
+	HGetEx(ctx context.Context, key string, field string, ttl time.Duration) (T, bool)
+
 	// HGetAll gets all fields and values in a hash.
 	// Useful for retrieving all active sessions for a user.
 	//
