@@ -1,11 +1,11 @@
 package crypto
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"io"
 	"strings"
@@ -22,16 +22,18 @@ type CryptoUtil struct {
 }
 
 type CryptoConfig struct {
-	KmsUri        string
-	KmsUriPrefix  string
-	KeysetData    string
+	MasterKey     string // Base64 AES-256 key for local KEK mode (env var). If set, KmsUri/KmsUriPrefix are ignored.
+	KmsUri        string // caas-kms URI (fallback when MasterKey is empty)
+	KmsUriPrefix  string // caas-kms URI prefix (fallback when MasterKey is empty)
+	KeysetData    string // Base64url-encoded encrypted Tink keyset (inline)
+	KeysetFile    string // Path to JSON file containing encrypted keyset (takes precedence over KeysetData)
 	HmacKey       string
 	KekAd         []byte
 	HashAlgorithm string
 }
 
 func NewCryptoUtil(cfg *CryptoConfig) (*CryptoUtil, error) {
-	tinkCfg := &encdec.TinkConfiguration{KekUri: cfg.KmsUri, KekUriPrefix: cfg.KmsUriPrefix, KeySetData: cfg.KeysetData, KekAd: cfg.KekAd}
+	tinkCfg := &encdec.TinkConfiguration{MasterKey: cfg.MasterKey, KekUri: cfg.KmsUri, KekUriPrefix: cfg.KmsUriPrefix, KeySetData: cfg.KeysetData, KeySetFile: cfg.KeysetFile, KekAd: cfg.KekAd}
 	cryptoProvider, err := encdec.NewTinkCryptoHandler(tinkCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create crypto provider")
@@ -72,8 +74,8 @@ func (u *CryptoUtil) CompareHash(ctx context.Context, plainName, storedHash []by
 		return false, errors.Wrap(err, "unable to create alias")
 	}
 
-	// Compare the stored hash with the newly generated hash
-	isEqual := bytes.Equal(storedHash, newHash)
+	// Constant-time comparison to prevent timing side-channel attacks.
+	isEqual := subtle.ConstantTimeCompare(storedHash, newHash) == 1
 
 	return isEqual, nil
 }

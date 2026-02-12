@@ -10,7 +10,6 @@ import (
 	"github.com/tink-crypto/tink-go/v2/core/registry"
 	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
 	"github.com/tink-crypto/tink-go/v2/keyset"
-	"github.com/tink-crypto/tink-go/v2/testkeyset"
 	"github.com/tink-crypto/tink-go/v2/tink"
 )
 
@@ -52,7 +51,7 @@ func (c *caasKmsClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 		return nil, fmt.Errorf("failed to decode keyset: %w", err)
 	}
 	reader := keyset.NewBinaryReader(bytes.NewReader(keysetData))
-	handle, err := testkeyset.Read(reader)
+	handle, err := insecurecleartextkeyset.Read(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read keyset: %w", err)
 	}
