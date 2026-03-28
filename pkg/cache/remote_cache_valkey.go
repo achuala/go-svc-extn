@@ -83,11 +83,32 @@ type RemoteCacheValkey[T any] struct {
 	locker      valkeylock.Locker // Distributed lock manager
 }
 
+// applyAuthConfig applies TLS and authentication settings from CacheConfig to ClientOption.
+func applyAuthConfig[T any](opts *valkey.ClientOption, cacheCfg *CacheConfig[T]) {
+	if cacheCfg.TLSConfig != nil {
+		opts.TLSConfig = cacheCfg.TLSConfig
+	}
+	if cacheCfg.AuthCredentialsFn != nil {
+		opts.AuthCredentialsFn = cacheCfg.AuthCredentialsFn
+	} else {
+		if cacheCfg.Username != "" {
+			opts.Username = cacheCfg.Username
+		}
+		if cacheCfg.Password != "" {
+			opts.Password = cacheCfg.Password
+		}
+	}
+}
+
 // NewRemoteCacheValkey creates a new instance of RemoteCacheValkey.
 // It initializes the Valkey client with the provided configuration.
 func NewRemoteCacheValkey[T any](cacheCfg *CacheConfig[T]) (*RemoteCacheValkey[T], error, func()) {
-	if !strings.HasPrefix(cacheCfg.RemoteCacheAddr, "redis://") {
-		cacheCfg.RemoteCacheAddr = "redis://" + cacheCfg.RemoteCacheAddr
+	if !strings.HasPrefix(cacheCfg.RemoteCacheAddr, "redis://") && !strings.HasPrefix(cacheCfg.RemoteCacheAddr, "rediss://") {
+		if cacheCfg.TLSConfig != nil {
+			cacheCfg.RemoteCacheAddr = "rediss://" + cacheCfg.RemoteCacheAddr
+		} else {
+			cacheCfg.RemoteCacheAddr = "redis://" + cacheCfg.RemoteCacheAddr
+		}
 	}
 	switch cacheCfg.Mode {
 	case "cluster":
@@ -98,12 +119,15 @@ func NewRemoteCacheValkey[T any](cacheCfg *CacheConfig[T]) (*RemoteCacheValkey[T
 			clusterClientOptions.SendToReplicas = func(cmd valkey.Completed) bool {
 				return cmd.IsReadOnly()
 			}
+			applyAuthConfig(&clusterClientOptions, cacheCfg)
 			vkClient, vkClientErr = valkey.NewClient(clusterClientOptions)
 		})
 	case "sentinel":
 		vkClientOnce.Do(func() {
-			// // connect to a valkey sentinel redis://127.0.0.1:26379/0?master_set=my_master"
-			vkClient, vkClientErr = valkey.NewClient(valkey.MustParseURL(cacheCfg.RemoteCacheAddr))
+			// connect to a valkey sentinel redis://127.0.0.1:26379/0?master_set=my_master"
+			sentinelClientOptions := valkey.MustParseURL(cacheCfg.RemoteCacheAddr)
+			applyAuthConfig(&sentinelClientOptions, cacheCfg)
+			vkClient, vkClientErr = valkey.NewClient(sentinelClientOptions)
 		})
 	default:
 		// Standalone mode
@@ -111,6 +135,7 @@ func NewRemoteCacheValkey[T any](cacheCfg *CacheConfig[T]) (*RemoteCacheValkey[T
 		clientOptions.SendToReplicas = func(cmd valkey.Completed) bool {
 			return cmd.IsReadOnly()
 		}
+		applyAuthConfig(&clientOptions, cacheCfg)
 		vkClientOnce.Do(func() {
 			vkClient, vkClientErr = valkey.NewClient(clientOptions)
 		})

@@ -4,20 +4,20 @@ import (
 	"context"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
+	ristretto "github.com/dgraph-io/ristretto/v2"
 )
 
 // LocalCacheRistretto is an implementation of Cache that uses Ristretto.
 // It provides a local in-memory caching solution.
 type LocalCacheRistretto[T any] struct {
-	cache *ristretto.Cache
+	cache *ristretto.Cache[string, any]
 	ttl   time.Duration
 }
 
 // NewLocalCacheRistretto creates a new instance of LocalCacheRistretto.
 // It initializes the Ristretto cache with the provided configuration.
 func NewLocalCacheRistretto[T any](cacheCfg *CacheConfig[T]) (*LocalCacheRistretto[T], error, func()) {
-	cache, err := ristretto.NewCache(&ristretto.Config{
+	cache, err := ristretto.NewCache(&ristretto.Config[string, any]{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).
 		BufferItems: 64,      // Number of keys per Get buffer.
@@ -33,7 +33,7 @@ func NewLocalCacheRistretto[T any](cacheCfg *CacheConfig[T]) (*LocalCacheRistret
 
 // NewLocalCacheRistrettoGeneric creates a new generic instance of LocalCacheRistretto.
 func NewLocalCacheRistrettoGeneric[T any](cacheCfg *CacheConfig[T]) (*LocalCacheRistretto[T], error, func()) {
-	cache, err := ristretto.NewCache(&ristretto.Config{
+	cache, err := ristretto.NewCache(&ristretto.Config[string, any]{
 		NumCounters: 1e7,     // Number of keys to track frequency of (10M).
 		MaxCost:     1 << 30, // Maximum cost of cache (1GB).
 		BufferItems: 64,      // Number of keys per Get buffer.

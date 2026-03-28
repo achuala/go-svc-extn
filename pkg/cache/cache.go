@@ -142,10 +142,12 @@ package cache
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"time"
 
+	"github.com/valkey-io/valkey-go"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -385,7 +387,7 @@ type Cache[T any] interface {
 
 // CacheConfig is the configuration for the cache.
 type CacheConfig[T any] struct {
-	// local/remote/cluster, default is local
+	// local/remote/cluster/sentinel, default is local
 	Mode            string
 	CacheName       string
 	RemoteCacheAddr string
@@ -395,6 +397,17 @@ type CacheConfig[T any] struct {
 	// Set this to true in order to extend the TTL of the key
 	ApplyTouch bool
 	SerDe      SerDe[T]
+
+	// TLSConfig enables TLS for the connection. Required for AWS ElastiCache/MemoryDB.
+	// When set, connections use TLS regardless of the URL scheme.
+	TLSConfig *tls.Config
+	// Username for Valkey AUTH (ACL-based authentication).
+	Username string
+	// Password for Valkey AUTH.
+	Password string
+	// AuthCredentialsFn allows dynamic credential rotation (e.g., AWS IAM auth tokens).
+	// When set, Username and Password fields are ignored.
+	AuthCredentialsFn func(valkey.AuthCredentialsContext) (valkey.AuthCredentials, error)
 }
 
 type SerDe[T any] interface {

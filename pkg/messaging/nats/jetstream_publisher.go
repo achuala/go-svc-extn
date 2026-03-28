@@ -33,6 +33,7 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 			log.Infof("nats connected to %s", nc.ConnectedServerId())
 		}),
 	}
+	options = append(options, cfg.NatsOptions()...)
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
 	log.Infof("nats js publisher connecting to nats at - %s", cfg.Address)
 	publisher, err := watermill_nats.NewPublisher(

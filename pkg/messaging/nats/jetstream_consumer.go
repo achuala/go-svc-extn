@@ -53,6 +53,7 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 			log.Infof("nats connected to %s", nc.ConnectedServerId())
 		}),
 	}
+	options = append(options, cfg.NatsOptions()...)
 	conn, err := nc.Connect(cfg.Address, options...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to nats: %w", err)
