@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/achuala/go-svc-extn/gen/go/options"
@@ -177,5 +176,5 @@ func maskString(value string) string {
 	if len(value) <= 4 {
 		return "****"
 	}
-	return strings.Repeat("*", len(value)-4) + value[len(value)-4:]
+	return "****" + value[len(value)-4:]
 }
