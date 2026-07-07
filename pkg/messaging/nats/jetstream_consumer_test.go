@@ -2,7 +2,6 @@ package nats_test
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -10,11 +9,10 @@ import (
 	"github.com/achuala/go-svc-extn/pkg/messaging"
 	"github.com/achuala/go-svc-extn/pkg/messaging/nats"
 	cloudevents "github.com/cloudevents/sdk-go"
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 func TestNatsJsConsumer(t *testing.T) {
-	logger := log.NewStdLogger(os.Stdout)
+	logger := testLogger()
 	cfg := messaging.BrokerConfig{
 		Broker:  "nats",
 		Address: "nats://localhost:4222",

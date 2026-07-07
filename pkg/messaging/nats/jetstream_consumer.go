@@ -3,6 +3,7 @@ package nats
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -10,7 +11,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/message/router/middleware"
 	"github.com/achuala/go-svc-extn/pkg/messaging"
-	"github.com/go-kratos/kratos/v2/log"
 	nc "github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -18,7 +18,7 @@ import (
 type NatsJsConsumer struct {
 	subscriber *watermill_nats.Subscriber
 	router     *message.Router
-	log        *log.Helper
+	logger     *slog.Logger
 }
 
 func consumerConfigurator(consumerName, streamName, subject string) watermill_nats.ResourceInitializer {
@@ -36,21 +36,23 @@ func consumerConfigurator(consumerName, streamName, subject string) watermill_na
 	}
 }
 
-func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsConsumerConfig, logger log.Logger) (*NatsJsConsumer, func(), error) {
-	log := log.NewHelper(logger)
+func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsConsumerConfig, logger *slog.Logger) (*NatsJsConsumer, func(), error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
 		nc.DisconnectErrHandler(func(nc *nc.Conn, err error) {
-			log.Errorf("nats disconnected: %v", err)
+			logger.Error("nats disconnected", "err", err)
 		}),
 		nc.ReconnectHandler(func(nc *nc.Conn) {
-			log.Infof("nats reconnected to %s", nc.ConnectedServerId())
+			logger.Info("nats reconnected", "server_id", nc.ConnectedServerId())
 		}),
 		nc.ConnectHandler(func(nc *nc.Conn) {
-			log.Infof("nats connected to %s", nc.ConnectedServerId())
+			logger.Info("nats connected", "server_id", nc.ConnectedServerId())
 		}),
 	}
 	options = append(options, cfg.NatsOptions()...)
@@ -58,10 +60,8 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to nats: %w", err)
 	}
-	log.Infof("consumer connected to nats - %v, status - %v", conn.ConnectedUrl(), conn.Status())
+	logger.Info("consumer connected to nats", "url", conn.ConnectedUrl(), "status", conn.Status())
 
-	// Consumer configuration just uses the durable name, the expectation is that the stream is already created and consumer is already created
-	// with necessary configuration.
 	consumerConfig := func(topic string, group string) jetstream.ConsumerConfig {
 		return jetstream.ConsumerConfig{
 			Durable:       subCfg.DurableName,
@@ -88,23 +88,23 @@ func NewNatsJsConsumer(cfg *messaging.BrokerConfig, subCfg *messaging.NatsJsCons
 	}
 	router.AddMiddleware(middleware.Recoverer)
 	router.AddConsumerHandler(subCfg.HandlerName, subCfg.Subject, subscriber, subCfg.HandlerFunc)
-	jsConsumer := &NatsJsConsumer{router: router, subscriber: subscriber, log: log}
+	jsConsumer := &NatsJsConsumer{router: router, subscriber: subscriber, logger: logger}
 	return jsConsumer, func() {
-		log.Infof("closing nats js consumer - %s", subCfg.ConsumerName)
+		logger.Info("closing nats js consumer", "consumer", subCfg.ConsumerName)
 		if jsConsumer.subscriber != nil {
 			if err := jsConsumer.subscriber.Close(); err != nil {
-				log.Warnf("error closing nats js subscriber - %s: %v", subCfg.ConsumerName, err)
+				logger.Warn("error closing nats js subscriber", "consumer", subCfg.ConsumerName, "err", err)
 			}
 		}
 		if jsConsumer.router != nil {
 			if err := jsConsumer.router.Close(); err != nil {
-				log.Warnf("error closing nats js router - %s: %v", subCfg.ConsumerName, err)
+				logger.Warn("error closing nats js router", "consumer", subCfg.ConsumerName, "err", err)
 			}
 		}
 	}, nil
 }
 
 func (c *NatsJsConsumer) Run(ctx context.Context) error {
-	log.Info("starting nats js router and consumer")
+	c.logger.Info("starting nats js router and consumer")
 	return c.router.Run(ctx)
 }

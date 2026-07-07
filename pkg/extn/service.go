@@ -1,15 +1,15 @@
 package extn
 
 import (
+	"log/slog"
 	"strconv"
 
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/middleware/metadata"
-	"github.com/go-kratos/kratos/v2/middleware/recovery"
-	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
+	"github.com/go-kratos/kratos/v3/middleware"
+	"github.com/go-kratos/kratos/v3/middleware/metadata"
+	"github.com/go-kratos/kratos/v3/middleware/recovery"
+	"github.com/go-kratos/kratos/v3/transport/grpc"
+	"github.com/go-kratos/kratos/v3/transport/http"
 	"go.opentelemetry.io/contrib/propagators/b3"
 )
 
@@ -25,33 +25,24 @@ func RegisterServices(grpcServer *grpc.Server, httpServer *http.Server, services
 	}
 }
 
-func NewGrpcService(port int, logger log.Logger, mw []middleware.Middleware) (*grpc.Server, func(), error) {
-	// Set up B3 Propagator
+func NewGrpcService(port int, logger *slog.Logger, mw []middleware.Middleware) (*grpc.Server, func(), error) {
+	_ = logger
+
 	b3Propagator := b3.New(b3.WithInjectEncoding(b3.B3MultipleHeader | b3.B3SingleHeader))
 
-	// Default middlewares
 	defaultMiddlewares := []middleware.Middleware{
 		recovery.Recovery(),
 		metadata.Server(),
 		tracing.Server(tracing.WithPropagator(b3Propagator)),
 	}
-	// Combine default middlewares with custom middlewares
 	allMiddlewares := append(defaultMiddlewares, mw...)
 
-	// gRPC server options
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(allMiddlewares...),
 		grpc.Address(":" + strconv.Itoa(port)),
 	}
-	// Create gRPC server
 	srv := grpc.NewServer(opts...)
 
-	// Register all provided services
-	/*	for _, registerService := range cfg.Services {
-			registerService(srv)
-		}
-	*/
-	// Return server and shutdown function
 	return srv, func() {
 		srv.GracefulStop()
 	}, nil

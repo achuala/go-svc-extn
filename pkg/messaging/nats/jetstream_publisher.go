@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"log/slog"
 	"time"
 
 	watermill_nats "github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
@@ -9,33 +10,33 @@ import (
 	"github.com/achuala/go-svc-extn/pkg/util/idgen"
 	cloudevents "github.com/cloudevents/sdk-go"
 	nc "github.com/nats-io/nats.go"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 type NatsJsPublisher struct {
 	publisher message.Publisher
 }
 
-func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJsPublisher, func(), error) {
-	log := log.NewHelper(logger)
+func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger *slog.Logger) (*NatsJsPublisher, func(), error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(30 * time.Second),
 		nc.ReconnectWait(1 * time.Second),
 		nc.DisconnectErrHandler(func(nc *nc.Conn, err error) {
-			log.Errorf("nats disconnected: %v", err)
+			logger.Error("nats disconnected", "err", err)
 		}),
 		nc.ReconnectHandler(func(nc *nc.Conn) {
-			log.Infof("nats reconnected to %s", nc.ConnectedServerId())
+			logger.Info("nats reconnected", "server_id", nc.ConnectedServerId())
 		}),
 		nc.ConnectHandler(func(nc *nc.Conn) {
-			log.Infof("nats connected to %s", nc.ConnectedServerId())
+			logger.Info("nats connected", "server_id", nc.ConnectedServerId())
 		}),
 	}
 	options = append(options, cfg.NatsOptions()...)
 	wmLogger := messaging.NewWatermillLoggerAdapter(logger)
-	log.Infof("nats js publisher connecting to nats at - %s", cfg.Address)
+	logger.Info("nats js publisher connecting to nats", "address", cfg.Address)
 	publisher, err := watermill_nats.NewPublisher(
 		watermill_nats.PublisherConfig{
 			URL:         cfg.Address,
@@ -50,7 +51,7 @@ func NewNatsJsPublisher(cfg *messaging.BrokerConfig, logger log.Logger) (*NatsJs
 	jsPublisher := &NatsJsPublisher{publisher: publisher}
 	return jsPublisher, func() {
 		if err := publisher.Close(); err != nil {
-			log.Warnf("error closing publisher: %v", err)
+			logger.Warn("error closing publisher", "err", err)
 		}
 	}, nil
 }

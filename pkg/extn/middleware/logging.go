@@ -3,13 +3,13 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/achuala/go-svc-extn/gen/go/options"
-	"github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-kratos/kratos/v2/middleware"
-	"github.com/go-kratos/kratos/v2/transport"
+	"github.com/go-kratos/kratos/v3/errors"
+	"github.com/go-kratos/kratos/v3/middleware"
+	"github.com/go-kratos/kratos/v3/transport"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -21,7 +21,10 @@ type Redacter interface {
 }
 
 // Server is a server logging middleware.
-func Server(logger log.Logger) middleware.Middleware {
+func Server(logger *slog.Logger) middleware.Middleware {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (reply any, err error) {
 			return logMiddleware(ctx, req, handler, logger, "server")
@@ -30,7 +33,10 @@ func Server(logger log.Logger) middleware.Middleware {
 }
 
 // Client is a client logging middleware.
-func Client(logger log.Logger) middleware.Middleware {
+func Client(logger *slog.Logger) middleware.Middleware {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (reply any, err error) {
 			return logMiddleware(ctx, req, handler, logger, "client")
@@ -38,7 +44,7 @@ func Client(logger log.Logger) middleware.Middleware {
 	}
 }
 
-func logMiddleware(ctx context.Context, req any, handler middleware.Handler, logger log.Logger, kind string) (reply any, err error) {
+func logMiddleware(ctx context.Context, req any, handler middleware.Handler, logger *slog.Logger, kind string) (reply any, err error) {
 	var (
 		code      int32
 		reason    string
@@ -47,7 +53,6 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 	)
 	startTime := time.Now()
 
-	// Consolidate correlation ID retrieval logic
 	switch kind {
 	case "server":
 		if info, ok := transport.FromServerContext(ctx); ok {
@@ -72,35 +77,38 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 
 	level, stack := extractError(err)
 
-	ctxFields := make([]any, 0)
+	attrs := []slog.Attr{
+		slog.String("kind", kind),
+		slog.String("component", component),
+		slog.String("op", operation),
+		slog.String("req", extractArgs(req)),
+		slog.Int64("code", int64(code)),
+		slog.Float64("latency", time.Since(startTime).Seconds()),
+	}
 	if rid != "" {
-		ctxFields = append(ctxFields, "rid", rid)
+		attrs = append(attrs, slog.String("rid", rid))
 	}
 	if stack != "" {
-		ctxFields = append(ctxFields, "stack", stack)
+		attrs = append(attrs, slog.String("stack", stack))
 	}
 	if reason != "" {
-		ctxFields = append(ctxFields, "reason", reason)
+		attrs = append(attrs, slog.String("reason", reason))
 	}
 	if reply != nil {
-		ctxFields = append(ctxFields, "resp", extractArgs(reply))
+		attrs = append(attrs, slog.String("resp", extractArgs(reply)))
 	}
-	logFields := append(ctxFields,
-		"kind", kind,
-		"component", component,
-		"op", operation,
-		"req", extractArgs(req),
-		"code", code,
-		"latency", time.Since(startTime).Seconds(),
-	)
-	_ = log.WithContext(ctx, logger).Log(level, logFields...)
+	if err != nil {
+		attrs = append(attrs, slog.Any("error", err))
+	}
+
+	logger.LogAttrs(ctx, level, kind+" request", attrs...)
 	return
 }
 
 var jsonOpts = &protojson.MarshalOptions{
-	EmitUnpopulated: false, // Skip zero values
-	UseProtoNames:   true,  // Use proto field names instead of lowerCamelCase
-	UseEnumNumbers:  false, // Use enum names instead of numbers
+	EmitUnpopulated: false,
+	UseProtoNames:   true,
+	UseEnumNumbers:  false,
 }
 
 // extractArgs returns the string representation of the req
@@ -124,11 +132,11 @@ func extractArgs(req any) string {
 }
 
 // extractError returns the log level and string representation of the error
-func extractError(err error) (log.Level, string) {
+func extractError(err error) (slog.Level, string) {
 	if err != nil {
-		return log.LevelError, fmt.Sprintf("%+v", err)
+		return slog.LevelError, fmt.Sprintf("%+v", err)
 	}
-	return log.LevelInfo, ""
+	return slog.LevelInfo, ""
 }
 
 func handleSensitiveData(m protoreflect.Message) {

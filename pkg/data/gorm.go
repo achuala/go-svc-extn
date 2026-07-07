@@ -2,9 +2,10 @@ package data
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-kratos/kratos/v3/log"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -51,7 +52,7 @@ func NewTransaction(d *Data) Transaction {
 }
 
 // NewData .
-func NewData(db *gorm.DB, logger log.Logger) (*Data, func(), error) {
+func NewData(db *gorm.DB, logger *slog.Logger) (*Data, func(), error) {
 	d := &Data{
 		db: db,
 	}
@@ -68,10 +69,10 @@ func NewGorm(dsn string) (*gorm.DB, error) {
 		ConnMaxIdleTime:        15 * time.Minute,
 		ConnMaxLifetime:        8 * time.Hour,
 	}
-	return NewGormWithOptions(dsn, log.DefaultLogger, opts)
+	return NewGormWithOptions(dsn, log.Default(), opts)
 }
 
-func NewGormWithOptions(dsn string, logger log.Logger, opts GormOptions) (*gorm.DB, error) {
+func NewGormWithOptions(dsn string, logger *slog.Logger, opts GormOptions) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{SkipDefaultTransaction: opts.SkipDefaultTransaction,
 		DisableAutomaticPing: true,
 		Logger:               NewGormLogger(logger)})

@@ -2,28 +2,33 @@ package data
 
 import (
 	"context"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-kratos/kratos/v3/log"
 	glogger "gorm.io/gorm/logger"
 )
 
 // GormLogger is a custom logger for GORM that uses Kratos logger
 type GormLogger struct {
-	logger        log.Logger
+	logger        *slog.Logger
 	LogLevel      glogger.LogLevel
 	SlowThreshold time.Duration
-	Enabled       *atomic.Bool // Use atomic for thread-safe toggling
+	Enabled       *atomic.Bool
 }
 
 // NewGormLogger creates a new GORM logger that uses Kratos logger
-func NewGormLogger(logger log.Logger) *GormLogger {
+func NewGormLogger(logger *slog.Logger) *GormLogger {
 	enabled := &atomic.Bool{}
-	enabled.Store(true) // Enabled by default
+	enabled.Store(true)
+
+	if logger == nil {
+		logger = slog.Default()
+	}
 
 	return &GormLogger{
-		logger:        log.With(logger, "module", "gorm"),
+		logger:        logger.With("module", "gorm"),
 		LogLevel:      glogger.Info,
 		SlowThreshold: 200 * time.Millisecond,
 		Enabled:       enabled,
@@ -60,21 +65,21 @@ func (l *GormLogger) SetSlowThreshold(threshold time.Duration) {
 // Info prints info
 func (l *GormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Info {
-		l.logger.Log(log.LevelInfo, msg, data)
+		l.logger.Log(ctx, log.LevelInfo, msg, data...)
 	}
 }
 
 // Warn prints warn messages
 func (l *GormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Warn {
-		l.logger.Log(log.LevelWarn, msg, data)
+		l.logger.Log(ctx, log.LevelWarn, msg, data...)
 	}
 }
 
 // Error prints error messages
 func (l *GormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Error {
-		l.logger.Log(log.LevelError, msg, data)
+		l.logger.Log(ctx, log.LevelError, msg, data...)
 	}
 }
 
@@ -86,7 +91,6 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 
 	elapsed := time.Since(begin)
 
-	// Skip logging based on log level
 	if err != nil && l.LogLevel < glogger.Error {
 		return
 	}
@@ -97,7 +101,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	sql, rows := fc()
 
 	if err != nil {
-		l.logger.Log(log.LevelError,
+		l.logger.Log(ctx, log.LevelError, "gorm query failed",
 			"sql", sql,
 			"rows", rows,
 			"elapsed", elapsed,
@@ -106,9 +110,8 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 		return
 	}
 
-	// Only log slow queries or in higher log levels
 	if elapsed > l.SlowThreshold {
-		l.logger.Log(log.LevelWarn,
+		l.logger.Log(ctx, log.LevelWarn, "gorm slow query",
 			"sql", sql,
 			"rows", rows,
 			"elapsed", elapsed,

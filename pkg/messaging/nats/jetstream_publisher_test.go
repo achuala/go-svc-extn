@@ -1,14 +1,12 @@
 package nats_test
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/achuala/go-svc-extn/pkg/messaging"
 	"github.com/achuala/go-svc-extn/pkg/messaging/nats"
 	cloudevents "github.com/cloudevents/sdk-go"
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 func TestNatsJsPublisher(t *testing.T) {
@@ -18,7 +16,7 @@ func TestNatsJsPublisher(t *testing.T) {
 		Timeout: time.Second * 10,
 	}
 
-	publisher, closeFn, err := nats.NewNatsJsPublisher(&cfg, log.NewStdLogger(os.Stdout))
+	publisher, closeFn, err := nats.NewNatsJsPublisher(&cfg, testLogger())
 	if err != nil {
 		t.Fatalf("failed to create publisher: %v", err)
 	}

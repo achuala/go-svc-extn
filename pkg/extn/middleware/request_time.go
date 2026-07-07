@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/go-kratos/kratos/v2/middleware"
+	"github.com/go-kratos/kratos/v3/log"
+	"github.com/go-kratos/kratos/v3/middleware"
 )
 
 // Define a private type for our context key to avoid collisions.
