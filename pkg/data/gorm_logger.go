@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kratos/kratos/v3/log"
 	glogger "gorm.io/gorm/logger"
 )
 
@@ -65,21 +64,21 @@ func (l *GormLogger) SetSlowThreshold(threshold time.Duration) {
 // Info prints info
 func (l *GormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Info {
-		l.logger.Log(ctx, log.LevelInfo, msg, data...)
+		l.logger.Log(ctx, slog.LevelInfo, msg, data...)
 	}
 }
 
 // Warn prints warn messages
 func (l *GormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Warn {
-		l.logger.Log(ctx, log.LevelWarn, msg, data...)
+		l.logger.Log(ctx, slog.LevelWarn, msg, data...)
 	}
 }
 
 // Error prints error messages
 func (l *GormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.IsLogEnabled() && l.LogLevel >= glogger.Error {
-		l.logger.Log(ctx, log.LevelError, msg, data...)
+		l.logger.Log(ctx, slog.LevelError, msg, data...)
 	}
 }
 
@@ -101,7 +100,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	sql, rows := fc()
 
 	if err != nil {
-		l.logger.Log(ctx, log.LevelError, "gorm query failed",
+		l.logger.Log(ctx, slog.LevelError, "gorm query failed",
 			"sql", sql,
 			"rows", rows,
 			"elapsed", elapsed,
@@ -111,7 +110,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	}
 
 	if elapsed > l.SlowThreshold {
-		l.logger.Log(ctx, log.LevelWarn, "gorm slow query",
+		l.logger.Log(ctx, slog.LevelWarn, "gorm slow query",
 			"sql", sql,
 			"rows", rows,
 			"elapsed", elapsed,
