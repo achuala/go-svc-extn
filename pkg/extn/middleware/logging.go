@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -77,11 +78,20 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 
 	level, stack := extractError(err)
 
+	// Skip the expensive request/response extraction (proto.Clone, protojson
+	// marshal and the recursive redaction walk, done once each for req and
+	// resp) when this record would be discarded anyway — e.g. a service running
+	// at LevelWarn. LogAttrs below performs the same Enabled check, but only
+	// after the attrs are built; checking here avoids the wasted work.
+	if !logger.Enabled(ctx, level) {
+		return
+	}
+
 	attrs := []slog.Attr{
 		slog.String("kind", kind),
 		slog.String("component", component),
 		slog.String("op", operation),
-		slog.String("req", extractArgs(req)),
+		slog.Any("req", extractArgs(req)),
 		slog.Int64("code", int64(code)),
 		slog.Float64("latency", time.Since(startTime).Seconds()),
 	}
@@ -95,7 +105,7 @@ func logMiddleware(ctx context.Context, req any, handler middleware.Handler, log
 		attrs = append(attrs, slog.String("reason", reason))
 	}
 	if reply != nil {
-		attrs = append(attrs, slog.String("resp", extractArgs(reply)))
+		attrs = append(attrs, slog.Any("resp", extractArgs(reply)))
 	}
 	if err != nil {
 		attrs = append(attrs, slog.Any("error", err))
@@ -111,17 +121,21 @@ var jsonOpts = &protojson.MarshalOptions{
 	UseEnumNumbers:  false,
 }
 
-// extractArgs returns the string representation of the req
-func extractArgs(req any) string {
+// extractArgs returns a log-friendly representation of req. For proto messages
+// it returns a json.RawMessage, so a JSON slog handler nests it as a real object
+// instead of an escaped string (a text handler renders it as a quoted string,
+// unchanged from before). Every other case returns a plain string, so a
+// non-JSON value never reaches a handler as an invalid RawMessage.
+func extractArgs(req any) any {
 	switch v := req.(type) {
 	case proto.Message:
 		clone := proto.Clone(v)
 		handleSensitiveData(clone.ProtoReflect())
-		json, err := jsonOpts.Marshal(clone)
+		b, err := jsonOpts.Marshal(clone)
 		if err != nil {
 			return fmt.Sprintf("%v", clone)
 		}
-		return string(json)
+		return json.RawMessage(b)
 	case Redacter:
 		return v.Redact()
 	case fmt.Stringer:
